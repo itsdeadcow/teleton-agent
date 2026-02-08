@@ -8,6 +8,7 @@ import type { TelegramBridge } from "../telegram/bridge.js";
 import type { Deal } from "./types.js";
 import { sendTon } from "../ton/transfer.js";
 import { formatAsset } from "./utils.js";
+import { JournalStore } from "../memory/journal-store.js";
 
 export interface ExecutionResult {
   success: boolean;
@@ -111,6 +112,9 @@ export async function executeDeal(
 
       console.log(`✅ [Deal] #${dealId} completed - TON sent - TX: ${txHash.slice(0, 8)}...`);
 
+      // Log to business journal
+      logDealToJournal(deal, db, txHash);
+
       // Notify user in chat
       await bridge.sendMessage({
         chatId: deal.chat_id,
@@ -203,6 +207,9 @@ Thank you for trading! 🎉`,
 
         console.log(`✅ [Deal] #${dealId} completed - Gift transferred`);
 
+        // Log to business journal
+        logDealToJournal(deal, db);
+
         // Notify user in chat
         await bridge.sendMessage({
           chatId: deal.chat_id,
@@ -258,6 +265,49 @@ Thank you for trading! 🎉`,
       success: false,
       error: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+/**
+ * Log completed deal to business journal for P&L tracking
+ */
+function logDealToJournal(deal: Deal, db: Database.Database, txHash?: string): void {
+  try {
+    const journal = new JournalStore(db);
+
+    // Determine what agent gave vs received
+    const agentGave = formatAsset(
+      deal.agent_gives_type,
+      deal.agent_gives_ton_amount,
+      deal.agent_gives_gift_slug
+    );
+    const agentReceived = formatAsset(
+      deal.user_gives_type,
+      deal.user_gives_ton_amount,
+      deal.user_gives_gift_slug
+    );
+
+    // Determine journal type: gift trade or TON trade
+    const isGiftTrade = deal.agent_gives_type === "gift" || deal.user_gives_type === "gift";
+
+    journal.addEntry({
+      type: isGiftTrade ? "gift" : "trade",
+      action: deal.agent_gives_type === "gift" ? "sell_gift" : "buy_gift",
+      asset_from: agentGave,
+      asset_to: agentReceived,
+      amount_from: deal.agent_gives_ton_amount ?? undefined,
+      amount_to: deal.user_gives_ton_amount ?? undefined,
+      counterparty: String(deal.user_telegram_id),
+      platform: "telegram_deals",
+      outcome: "neutral", // P&L computed later when floor prices are known
+      tx_hash: txHash,
+      tool_used: "deal_executor",
+      chat_id: deal.chat_id,
+      user_id: deal.user_telegram_id,
+    });
+  } catch (error) {
+    // Non-critical: don't let journal failure break deal execution
+    console.error(`⚠️ [Deal] Failed to log deal #${deal.id} to journal:`, error);
   }
 }
 
