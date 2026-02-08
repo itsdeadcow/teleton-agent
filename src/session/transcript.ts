@@ -1,4 +1,13 @@
-import { appendFileSync, readFileSync, existsSync, mkdirSync, unlinkSync, renameSync } from "fs";
+import {
+  appendFileSync,
+  readFileSync,
+  existsSync,
+  mkdirSync,
+  unlinkSync,
+  renameSync,
+  readdirSync,
+  statSync,
+} from "fs";
 import { join, dirname } from "path";
 import type { Message, AssistantMessage } from "@mariozechner/pi-ai";
 import { TELETON_ROOT } from "../workspace/paths.js";
@@ -215,4 +224,39 @@ export function archiveTranscript(sessionId: string): boolean {
     console.error(`Failed to archive transcript ${sessionId}:`, error);
     return false;
   }
+}
+
+/**
+ * Delete transcript and archived files older than maxAgeDays.
+ * Call once at startup to prevent unbounded growth.
+ */
+export function cleanupOldTranscripts(maxAgeDays: number = 30): number {
+  if (!existsSync(SESSIONS_DIR)) return 0;
+
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  let deleted = 0;
+
+  try {
+    for (const file of readdirSync(SESSIONS_DIR)) {
+      if (!file.endsWith(".jsonl") && !file.endsWith(".archived")) continue;
+      const filePath = join(SESSIONS_DIR, file);
+      try {
+        const mtime = statSync(filePath).mtimeMs;
+        if (mtime < cutoff) {
+          unlinkSync(filePath);
+          deleted++;
+        }
+      } catch {
+        // skip files we can't stat/delete
+      }
+    }
+  } catch (error) {
+    console.error("Failed to cleanup old transcripts:", error);
+  }
+
+  if (deleted > 0) {
+    console.log(`🧹 Cleaned up ${deleted} transcript(s) older than ${maxAgeDays} days`);
+  }
+
+  return deleted;
 }

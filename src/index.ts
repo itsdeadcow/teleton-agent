@@ -155,6 +155,10 @@ ${blue}  ┌──────────────────────�
     const { migrateSessionsToDb } = await import("./session/migrate.js");
     migrateSessionsToDb();
 
+    // Cleanup old transcript files (>30 days)
+    const { cleanupOldTranscripts } = await import("./session/transcript.js");
+    cleanupOldTranscripts(30);
+
     // Index knowledge base (MEMORY.md, memory/*.md)
     const memory = initializeMemory({
       database: {
