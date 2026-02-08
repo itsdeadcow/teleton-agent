@@ -160,7 +160,7 @@ ${blue}  ┌──────────────────────�
 
   // Optional modules
   const enabledModules: string[] = await prompter.multiselect({
-    message: "Enable optional modules",
+    message: "Enable optional modules (Space to toggle, Enter to confirm)",
     options: [
       { value: "casino", label: "Casino", hint: "Slot machine & dice games with TON bets" },
       { value: "deals", label: "Deals", hint: "Secure gift/TON trading with inline buttons" },
