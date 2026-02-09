@@ -164,7 +164,7 @@ export async function getTonPrice(): Promise<{
 } | null> {
   // Return cached value if fresh
   if (_tonPriceCache && Date.now() - _tonPriceCache.timestamp < TON_PRICE_CACHE_TTL_MS) {
-    return _tonPriceCache;
+    return { ..._tonPriceCache };
   }
 
   // Primary: TonAPI /v2/rates (uses configured API key if available)
