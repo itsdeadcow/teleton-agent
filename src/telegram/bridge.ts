@@ -421,6 +421,13 @@ export class TelegramBridge {
   }
 
   /**
+   * Get cached peer entity for a chat ID (if available)
+   */
+  getPeer(chatId: string): Api.TypePeer | undefined {
+    return this.peerCache.get(chatId);
+  }
+
+  /**
    * Get the underlying client
    */
   getClient(): TelegramUserClient {
