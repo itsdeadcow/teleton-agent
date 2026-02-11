@@ -454,14 +454,7 @@ ${blue}  ┌──────────────────────�
     }
   }
 
-  const setupBot = dealsEnabled
-    ? await prompter.confirm({
-        message: "Set up a Telegram bot for deal confirmations? (inline buttons)",
-        initialValue: true,
-      })
-    : false;
-
-  if (setupBot) {
+  if (dealsEnabled) {
     prompter.note(
       "Create a bot with @BotFather on Telegram:\n" +
         "1. Send /newbot and follow the instructions\n" +
