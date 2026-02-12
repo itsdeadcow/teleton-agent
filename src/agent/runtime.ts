@@ -668,27 +668,7 @@ export class AgentRuntime {
   clearHistory(chatId: string): void {
     const db = getDatabase().getDb();
 
-    // Delete from FTS first (while source rows still exist for subquery)
-    db.prepare(
-      `
-      DELETE FROM tg_messages_fts
-      WHERE rowid IN (
-        SELECT rowid FROM tg_messages WHERE chat_id = ?
-      )
-    `
-    ).run(chatId);
-
-    // Delete from vector table
-    db.prepare(
-      `
-      DELETE FROM tg_messages_vec
-      WHERE id IN (
-        SELECT id FROM tg_messages WHERE chat_id = ?
-      )
-    `
-    ).run(chatId);
-
-    // Delete messages from main table last
+    // Delete messages (FTS cleanup handled automatically by tg_messages_fts_delete trigger)
     db.prepare(`DELETE FROM tg_messages WHERE chat_id = ?`).run(chatId);
 
     // Reset session (creates new sessionId, deletes old transcript)
