@@ -92,17 +92,22 @@ function calculateContextTokens(context: Context): number {
 
 /**
  * Check if memory flush is needed (soft threshold)
+ * Accepts optional pre-computed tokenCount to avoid double calculation
  */
-export function shouldFlushMemory(context: Context, config: CompactionConfig): boolean {
+export function shouldFlushMemory(
+  context: Context,
+  config: CompactionConfig,
+  tokenCount?: number
+): boolean {
   if (!config.enabled || !config.memoryFlushEnabled) {
     return false;
   }
 
-  const tokenCount = calculateContextTokens(context);
+  const tokens = tokenCount ?? calculateContextTokens(context);
   const softThreshold = config.softThresholdTokens ?? 6000;
 
-  if (tokenCount >= softThreshold) {
-    console.log(`💾 Memory flush needed: ~${tokenCount} tokens (soft threshold: ${softThreshold})`);
+  if (tokens >= softThreshold) {
+    console.log(`💾 Memory flush needed: ~${tokens} tokens (soft threshold: ${softThreshold})`);
     return true;
   }
 
@@ -137,14 +142,18 @@ function flushMemoryToDailyLog(context: Context): void {
 
 /**
  * Check if compaction is needed based on config
+ * Accepts optional pre-computed tokenCount to avoid double calculation
  */
-export function shouldCompact(context: Context, config: CompactionConfig): boolean {
+export function shouldCompact(
+  context: Context,
+  config: CompactionConfig,
+  tokenCount?: number
+): boolean {
   if (!config.enabled) {
     return false;
   }
 
   const messageCount = context.messages.length;
-  const tokenCount = calculateContextTokens(context);
 
   // Check message count threshold
   if (config.maxMessages && messageCount >= config.maxMessages) {
@@ -153,9 +162,12 @@ export function shouldCompact(context: Context, config: CompactionConfig): boole
   }
 
   // Check token count threshold
-  if (config.maxTokens && tokenCount >= config.maxTokens) {
-    console.log(`⚠️  Compaction needed: ~${tokenCount} tokens (max: ${config.maxTokens})`);
-    return true;
+  if (config.maxTokens) {
+    const tokens = tokenCount ?? calculateContextTokens(context);
+    if (tokens >= config.maxTokens) {
+      console.log(`⚠️  Compaction needed: ~${tokens} tokens (max: ${config.maxTokens})`);
+      return true;
+    }
   }
 
   return false;
@@ -352,12 +364,15 @@ export class CompactionManager {
     provider?: SupportedProvider,
     utilityModel?: string
   ): Promise<string | null> {
+    // Compute token count once for both checks
+    const tokenCount = calculateContextTokens(context);
+
     // Check for soft threshold memory flush BEFORE compaction
-    if (shouldFlushMemory(context, this.config)) {
+    if (shouldFlushMemory(context, this.config, tokenCount)) {
       flushMemoryToDailyLog(context);
     }
 
-    if (!shouldCompact(context, this.config)) {
+    if (!shouldCompact(context, this.config, tokenCount)) {
       return null;
     }
 

@@ -49,11 +49,11 @@ export class HybridSearch {
 
     // Vector search
     const vectorResults = this.vectorEnabled
-      ? this.vectorSearchKnowledge(queryEmbedding, limit * 2)
+      ? this.vectorSearchKnowledge(queryEmbedding, Math.ceil(limit * 1.5))
       : [];
 
     // Keyword search (BM25)
-    const keywordResults = this.keywordSearchKnowledge(query, limit * 2);
+    const keywordResults = this.keywordSearchKnowledge(query, Math.ceil(limit * 1.5));
 
     // Merge results
     return this.mergeResults(vectorResults, keywordResults, vectorWeight, keywordWeight, limit);
@@ -78,11 +78,15 @@ export class HybridSearch {
 
     // Vector search
     const vectorResults = this.vectorEnabled
-      ? this.vectorSearchMessages(queryEmbedding, limit * 2, options.chatId)
+      ? this.vectorSearchMessages(queryEmbedding, Math.ceil(limit * 1.5), options.chatId)
       : [];
 
     // Keyword search
-    const keywordResults = this.keywordSearchMessages(query, limit * 2, options.chatId);
+    const keywordResults = this.keywordSearchMessages(
+      query,
+      Math.ceil(limit * 1.5),
+      options.chatId
+    );
 
     // Merge results
     return this.mergeResults(vectorResults, keywordResults, vectorWeight, keywordWeight, limit);

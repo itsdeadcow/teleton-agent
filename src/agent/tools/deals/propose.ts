@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { generateDealId, calculateExpiry, formatDealProposal } from "../../../deals/utils.js";
@@ -262,7 +263,7 @@ async function sendInlineBotResult(
       peer: peer,
       queryId: results.queryId,
       id: resultToSend.id,
-      randomId: BigInt(Math.floor(Math.random() * 1e16)) as any,
+      randomId: randomBytes(8).readBigUInt64BE() as any,
     })
   );
 

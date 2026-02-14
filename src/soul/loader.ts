@@ -32,8 +32,10 @@ You are Tonnet, a personal AI assistant that operates through Telegram.
  */
 export function loadSoul(): string {
   for (const path of SOUL_PATHS) {
-    if (existsSync(path)) {
-      return readFileSync(path, "utf-8");
+    try {
+      if (existsSync(path)) return readFileSync(path, "utf-8");
+    } catch {
+      console.error(`Failed to read soul file: ${path}`);
     }
   }
   return DEFAULT_SOUL;
@@ -45,8 +47,10 @@ export function loadSoul(): string {
  */
 export function loadStrategy(): string | null {
   for (const path of STRATEGY_PATHS) {
-    if (existsSync(path)) {
-      return readFileSync(path, "utf-8");
+    try {
+      if (existsSync(path)) return readFileSync(path, "utf-8");
+    } catch {
+      console.error(`Failed to read strategy file: ${path}`);
     }
   }
   return null;
@@ -58,8 +62,10 @@ export function loadStrategy(): string | null {
  */
 export function loadSecurity(): string | null {
   for (const path of SECURITY_PATHS) {
-    if (existsSync(path)) {
-      return readFileSync(path, "utf-8");
+    try {
+      if (existsSync(path)) return readFileSync(path, "utf-8");
+    } catch {
+      console.error(`Failed to read security file: ${path}`);
     }
   }
   return null;

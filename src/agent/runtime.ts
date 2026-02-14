@@ -223,16 +223,12 @@ export class AgentRuntime {
         session = resetSessionWithPolicy(chatId, resetPolicy);
       }
 
-      // Load previous session if transcript exists
-      let context: Context;
-      if (transcriptExists(session.sessionId)) {
+      // Load previous session transcript (returns empty messages if none)
+      let context: Context = loadContextFromTranscript(session.sessionId);
+      if (context.messages.length > 0) {
         console.log(`📖 Loading existing session: ${session.sessionId}`);
-        context = loadContextFromTranscript(session.sessionId);
       } else {
         console.log(`🆕 Starting new session: ${session.sessionId}`);
-        context = {
-          messages: [],
-        };
       }
 
       // Get previous timestamp for elapsed time calculation
@@ -749,8 +745,19 @@ export class AgentRuntime {
 
   /**
    * Get memory statistics (for agent awareness)
+   * Cached for 5 minutes to avoid 3 COUNT queries per message
    */
+  private _memoryStatsCache: {
+    data: { totalMessages: number; totalChats: number; knowledgeChunks: number };
+    expiry: number;
+  } | null = null;
+
   getMemoryStats(): { totalMessages: number; totalChats: number; knowledgeChunks: number } {
+    const now = Date.now();
+    if (this._memoryStatsCache && now < this._memoryStatsCache.expiry) {
+      return this._memoryStatsCache.data;
+    }
+
     const db = getDatabase().getDb();
 
     const msgCount = db.prepare(`SELECT COUNT(*) as count FROM tg_messages`).get() as {
@@ -765,10 +772,13 @@ export class AgentRuntime {
       count: number;
     };
 
-    return {
+    const data = {
       totalMessages: msgCount.count,
       totalChats: chatCount.count,
       knowledgeChunks: knowledgeCount.count,
     };
+
+    this._memoryStatsCache = { data, expiry: now + 5 * 60 * 1000 };
+    return data;
   }
 }

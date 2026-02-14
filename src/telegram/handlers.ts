@@ -67,7 +67,7 @@ class RateLimiter {
     this.groupTimestamps.set(groupId, timestamps);
 
     // Evict stale group entries (no activity in >1 min)
-    if (this.groupTimestamps.size > 500) {
+    if (this.groupTimestamps.size > 100) {
       for (const [id, ts] of this.groupTimestamps) {
         if (ts.length === 0 || ts[ts.length - 1] <= oneMinuteAgo) {
           this.groupTimestamps.delete(id);

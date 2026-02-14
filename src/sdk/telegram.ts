@@ -3,6 +3,7 @@
  */
 
 import type { TelegramBridge } from "../telegram/bridge.js";
+import { randomBytes } from "crypto";
 import type {
   TelegramSDK,
   SendMessageOptions,
@@ -75,7 +76,7 @@ export function createTelegramSDK(bridge: TelegramBridge, log: PluginLogger): Te
             peer: chatId,
             media: new Api.InputMediaDice({ emoticon }),
             message: "",
-            randomId: BigInt(Math.floor(Math.random() * 1e16)) as any,
+            randomId: randomBytes(8).readBigUInt64BE() as any,
             replyTo: replyToId
               ? new Api.InputReplyToMessage({ replyToMsgId: replyToId })
               : undefined,

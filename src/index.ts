@@ -18,6 +18,7 @@ import type { SDKDependencies } from "./sdk/index.js";
 import { getProviderMetadata, type SupportedProvider } from "./config/providers.js";
 import { loadModules } from "./agent/tools/module-loader.js";
 import { ModulePermissions } from "./agent/tools/module-permissions.js";
+import { SHUTDOWN_TIMEOUT_MS } from "./constants/timeouts.js";
 import type { PluginModule, PluginContext } from "./agent/tools/types.js";
 import { getMarketService } from "./market/module.js";
 
@@ -386,23 +387,25 @@ ${blue}  ┌──────────────────────�
    * Handle scheduled task message
    */
   private async handleScheduledTask(message: TelegramMessage): Promise<void> {
+    // Hoist all dynamic imports to top of function
+    const { getTaskStore } = await import("./memory/agent/tasks.js");
+    const { executeScheduledTask } = await import("./telegram/task-executor.js");
+    const { TaskDependencyResolver } = await import("./telegram/task-dependency-resolver.js");
+    const { getDatabase } = await import("./memory/index.js");
+
+    const db = getDatabase().getDb();
+    const taskStore = getTaskStore(db);
+
+    // Extract task ID from format: [TASK:uuid] description
+    const match = message.text.match(/^\[TASK:([^\]]+)\]/);
+    if (!match) {
+      console.warn("Invalid task format:", message.text);
+      return;
+    }
+
+    const taskId = match[1];
+
     try {
-      // Extract task ID from format: [TASK:uuid] description
-      const match = message.text.match(/^\[TASK:([^\]]+)\]/);
-      if (!match) {
-        console.warn("Invalid task format:", message.text);
-        return;
-      }
-
-      const taskId = match[1];
-
-      // Import TaskStore and task executor
-      const { getTaskStore } = await import("./memory/agent/tasks.js");
-      const { executeScheduledTask } = await import("./telegram/task-executor.js");
-      const { getDatabase } = await import("./memory/index.js");
-
-      const db = getDatabase().getDb();
-      const taskStore = getTaskStore(db);
       const task = taskStore.getTask(taskId);
 
       if (!task) {
@@ -486,7 +489,6 @@ ${blue}  ┌──────────────────────�
 
       // Initialize dependency resolver if needed
       if (!this.dependencyResolver) {
-        const { TaskDependencyResolver } = await import("./telegram/task-dependency-resolver.js");
         this.dependencyResolver = new TaskDependencyResolver(taskStore, this.bridge);
       }
 
@@ -497,24 +499,15 @@ ${blue}  ┌──────────────────────�
 
       // Try to mark task as failed and cascade to dependents
       try {
-        const { getTaskStore } = await import("./memory/agent/tasks.js");
-        const { TaskDependencyResolver } = await import("./telegram/task-dependency-resolver.js");
-        const { getDatabase } = await import("./memory/index.js");
-        const db = getDatabase().getDb();
-        const taskStore = getTaskStore(db);
-        const match = message.text.match(/^\[TASK:([^\]]+)\]/);
-        if (match) {
-          const failedTaskId = match[1];
-          taskStore.failTask(failedTaskId, error instanceof Error ? error.message : String(error));
+        taskStore.failTask(taskId, error instanceof Error ? error.message : String(error));
 
-          // Initialize resolver if needed
-          if (!this.dependencyResolver) {
-            this.dependencyResolver = new TaskDependencyResolver(taskStore, this.bridge);
-          }
-
-          // Cascade failure to dependents
-          await this.dependencyResolver.onTaskFail(failedTaskId);
+        // Initialize resolver if needed
+        if (!this.dependencyResolver) {
+          this.dependencyResolver = new TaskDependencyResolver(taskStore, this.bridge);
         }
+
+        // Cascade failure to dependents
+        await this.dependencyResolver.onTaskFail(taskId);
       } catch (e) {
         // Ignore if we can't update task
       }
@@ -546,7 +539,13 @@ ${blue}  ┌──────────────────────�
  * Start the application
  */
 export async function main(configPath?: string): Promise<void> {
-  const app = new TonnetApp(configPath);
+  let app: TonnetApp;
+  try {
+    app = new TonnetApp(configPath);
+  } catch (error) {
+    console.error("Failed to initialize:", error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 
   // Handle uncaught errors - log and keep running
   process.on("unhandledRejection", (reason) => {
@@ -565,7 +564,6 @@ export async function main(configPath?: string): Promise<void> {
     if (shutdownInProgress) return;
     shutdownInProgress = true;
 
-    const { SHUTDOWN_TIMEOUT_MS } = await import("./constants/timeouts.js");
     const forceExit = setTimeout(() => {
       console.error("⚠️ Shutdown timed out, forcing exit");
       process.exit(1);

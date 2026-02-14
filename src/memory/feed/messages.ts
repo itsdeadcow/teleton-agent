@@ -57,7 +57,8 @@ export class MessageStore {
       this.ensureUser(message.senderId);
     }
 
-    const embedding = message.text ? await this.embedder.embedQuery(message.text) : [];
+    const embedding =
+      this.vectorEnabled && message.text ? await this.embedder.embedQuery(message.text) : [];
     const embeddingBuffer = serializeEmbedding(embedding);
 
     this.db

@@ -22,8 +22,19 @@ export function loadConfig(configPath: string = DEFAULT_CONFIG_PATH): Config {
     throw new Error(`Config file not found: ${fullPath}\nRun 'teleton setup' to create one.`);
   }
 
-  const content = readFileSync(fullPath, "utf-8");
-  const raw = parse(content);
+  let content: string;
+  try {
+    content = readFileSync(fullPath, "utf-8");
+  } catch (error) {
+    throw new Error(`Cannot read config file ${fullPath}: ${(error as Error).message}`);
+  }
+
+  let raw: unknown;
+  try {
+    raw = parse(content);
+  } catch (error) {
+    throw new Error(`Invalid YAML in ${fullPath}: ${(error as Error).message}`);
+  }
 
   const result = ConfigSchema.safeParse(raw);
   if (!result.success) {
@@ -35,7 +46,7 @@ export function loadConfig(configPath: string = DEFAULT_CONFIG_PATH): Config {
   // override with the correct default for their chosen provider
   const config = result.data;
   const provider = config.agent.provider as SupportedProvider;
-  if (provider !== "anthropic" && !raw.agent?.model) {
+  if (provider !== "anthropic" && !(raw as any).agent?.model) {
     const meta = getProviderMetadata(provider);
     config.agent.model = meta.defaultModel;
   }
@@ -71,6 +82,11 @@ export function loadConfig(configPath: string = DEFAULT_CONFIG_PATH): Config {
 }
 
 export function saveConfig(config: Config, configPath: string = DEFAULT_CONFIG_PATH): void {
+  const result = ConfigSchema.safeParse(config);
+  if (!result.success) {
+    throw new Error(`Refusing to save invalid config: ${result.error.message}`);
+  }
+
   const fullPath = expandPath(configPath);
   const dir = dirname(fullPath);
 

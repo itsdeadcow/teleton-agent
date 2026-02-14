@@ -107,7 +107,10 @@ export class TelegramBridge {
     try {
       const peer = this.peerCache.get(chatId) || chatId;
       const messages = await this.client.getMessages(peer, { limit });
-      return await Promise.all(messages.map((msg) => this.parseMessage(msg)));
+      const results = await Promise.allSettled(messages.map((msg) => this.parseMessage(msg)));
+      return results
+        .filter((r): r is PromiseFulfilledResult<TelegramMessage> => r.status === "fulfilled")
+        .map((r) => r.value);
     } catch (error) {
       console.error("Error getting messages:", error);
       return [];
@@ -328,7 +331,7 @@ export class TelegramBridge {
     // Cache the peer for replying later (FIFO eviction at 1000 entries)
     if (msg.peerId) {
       this.peerCache.set(chatId, msg.peerId);
-      if (this.peerCache.size > 1000) {
+      if (this.peerCache.size > 5000) {
         const oldest = this.peerCache.keys().next().value;
         if (oldest !== undefined) this.peerCache.delete(oldest);
       }

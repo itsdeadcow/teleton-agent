@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Type } from "@sinclair/typebox";
 import { Api } from "telegram";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
@@ -64,7 +65,7 @@ export const telegramForwardMessageExecutor: ToolExecutor<ForwardMessageParams> 
         id: messageIds,
         silent,
         background,
-        randomId: messageIds.map(() => BigInt(Math.floor(Math.random() * 1e16)) as any),
+        randomId: messageIds.map(() => randomBytes(8).readBigUInt64BE() as any),
       })
     );
 

@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Type } from "@sinclair/typebox";
 import { Api } from "telegram";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
@@ -107,7 +108,7 @@ export const telegramCreatePollExecutor: ToolExecutor<CreatePollParams> = async 
 
     // Create poll using GramJS
     const poll = new Api.Poll({
-      id: BigInt(Math.floor(Math.random() * 1e16)) as any,
+      id: randomBytes(8).readBigUInt64BE() as any,
       question: new Api.TextWithEntities({ text: question, entities: [] }),
       answers: options.map(
         (opt, idx) =>
@@ -129,7 +130,7 @@ export const telegramCreatePollExecutor: ToolExecutor<CreatePollParams> = async 
           poll,
         }),
         message: "",
-        randomId: BigInt(Math.floor(Math.random() * 1e16)) as any,
+        randomId: randomBytes(8).readBigUInt64BE() as any,
       })
     );
 

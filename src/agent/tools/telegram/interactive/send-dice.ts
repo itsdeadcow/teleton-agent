@@ -2,6 +2,7 @@
  * telegram_send_dice - Send animated dice/games in Telegram
  */
 
+import { randomBytes } from "crypto";
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
 import { Api } from "telegram";
@@ -60,7 +61,7 @@ export const telegramSendDiceExecutor: ToolExecutor<SendDiceParams> = async (
         peer: chat_id,
         media: new Api.InputMediaDice({ emoticon }),
         message: "",
-        randomId: BigInt(Math.floor(Math.random() * 1e16)) as any,
+        randomId: randomBytes(8).readBigUInt64BE() as any,
         replyTo: reply_to ? new Api.InputReplyToMessage({ replyToMsgId: reply_to }) : undefined,
       })
     );

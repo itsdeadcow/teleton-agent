@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Type } from "@sinclair/typebox";
 import { Api } from "telegram";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
@@ -117,7 +118,7 @@ export const telegramSendStickerExecutor: ToolExecutor<SendStickerParams> = asyn
             }),
           }),
           message: "",
-          randomId: BigInt(Math.floor(Math.random() * 1e16)) as any,
+          randomId: randomBytes(8).readBigUInt64BE() as any,
           replyTo: replyToId ? new Api.InputReplyToMessage({ replyToMsgId: replyToId }) : undefined,
         })
       );

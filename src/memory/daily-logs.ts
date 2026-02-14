@@ -34,35 +34,39 @@ function ensureMemoryDir(): void {
  * Append entry to daily log
  */
 export function appendToDailyLog(content: string, date: Date = new Date()): void {
-  ensureMemoryDir();
+  try {
+    ensureMemoryDir();
 
-  const logPath = getDailyLogPath(date);
-  const timestamp = date.toLocaleTimeString("en-US", { hour12: false });
+    const logPath = getDailyLogPath(date);
+    const timestamp = date.toLocaleTimeString("en-US", { hour12: false });
 
-  // Create header if file doesn't exist
-  if (!existsSync(logPath)) {
-    const header = `# Daily Log - ${formatDate(date)}\n\n`;
-    appendFileSync(logPath, header, "utf-8");
+    // Create header if file doesn't exist
+    if (!existsSync(logPath)) {
+      const header = `# Daily Log - ${formatDate(date)}\n\n`;
+      appendFileSync(logPath, header, "utf-8");
+    }
+
+    // Append timestamped entry
+    const entry = `## ${timestamp}\n\n${content}\n\n---\n\n`;
+    appendFileSync(logPath, entry, "utf-8");
+
+    console.log(`📅 Daily log updated: ${logPath}`);
+  } catch (error) {
+    console.error("Failed to write daily log:", error instanceof Error ? error.message : error);
   }
-
-  // Append timestamped entry
-  const entry = `## ${timestamp}\n\n${content}\n\n---\n\n`;
-  appendFileSync(logPath, entry, "utf-8");
-
-  console.log(`📅 Daily log updated: ${logPath}`);
 }
 
 /**
  * Read daily log content
  */
 export function readDailyLog(date: Date = new Date()): string | null {
-  const logPath = getDailyLogPath(date);
-
-  if (!existsSync(logPath)) {
+  try {
+    const logPath = getDailyLogPath(date);
+    if (!existsSync(logPath)) return null;
+    return readFileSync(logPath, "utf-8");
+  } catch {
     return null;
   }
-
-  return readFileSync(logPath, "utf-8");
 }
 
 /**
