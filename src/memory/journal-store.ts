@@ -1,8 +1,3 @@
-/**
- * Journal Store - CRUD operations for business journal
- * Tracks: trades, gifts, middleman, KOL services
- */
-
 import { SECONDS_PER_DAY } from "../constants/limits.js";
 import type Database from "better-sqlite3";
 import { JOURNAL_SCHEMA } from "../utils/module-db.js";
@@ -71,20 +66,13 @@ export interface QueryParams {
 
 export class JournalStore {
   constructor(private db: Database.Database) {
-    // Ensure journal table exists (for databases created before journal feature)
     this.ensureTable();
   }
 
-  /**
-   * Ensure journal table exists
-   */
   private ensureTable(): void {
     this.db.exec(JOURNAL_SCHEMA);
   }
 
-  /**
-   * Add a new journal entry
-   */
   addEntry(params: AddEntryParams): JournalEntry {
     const stmt = this.db.prepare(`
       INSERT INTO journal (
@@ -119,17 +107,11 @@ export class JournalStore {
     return this.getEntryById(info.lastInsertRowid as number)!;
   }
 
-  /**
-   * Get a single entry by ID
-   */
   getEntryById(id: number): JournalEntry | null {
     const stmt = this.db.prepare("SELECT * FROM journal WHERE id = ?");
     return stmt.get(id) as JournalEntry | null;
   }
 
-  /**
-   * Update an existing entry (outcome, P&L, tx_hash)
-   */
   updateEntry(params: UpdateEntryParams): JournalEntry | null {
     const updates: string[] = [];
     const values: Record<string, any> = { id: params.id };
@@ -169,9 +151,6 @@ export class JournalStore {
     return this.getEntryById(params.id);
   }
 
-  /**
-   * Query entries with filters
-   */
   queryEntries(params: QueryParams = {}): JournalEntry[] {
     const conditions: string[] = [];
     const values: Record<string, any> = {};
@@ -210,9 +189,6 @@ export class JournalStore {
     return stmt.all(values) as JournalEntry[];
   }
 
-  /**
-   * Get all entries (with optional limit)
-   */
   getAllEntries(limit?: number): JournalEntry[] {
     const limitClause = limit ? `LIMIT ${limit}` : "";
     const stmt = this.db.prepare(`
@@ -223,9 +199,6 @@ export class JournalStore {
     return stmt.all() as JournalEntry[];
   }
 
-  /**
-   * Calculate P&L summary for a given period
-   */
   calculatePnL(params: { type?: JournalType; days?: number } = {}): {
     total_pnl: number;
     trades_count: number;
@@ -275,9 +248,6 @@ export class JournalStore {
     };
   }
 
-  /**
-   * Get pending entries (outcome = 'pending')
-   */
   getPendingEntries(type?: JournalType): JournalEntry[] {
     const whereClause = type
       ? "WHERE outcome = 'pending' AND type = ?"

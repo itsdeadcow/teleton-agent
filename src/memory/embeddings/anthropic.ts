@@ -3,10 +3,6 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 import { VOYAGE_API_URL } from "../../constants/api-endpoints.js";
 import { VOYAGE_BATCH_SIZE } from "../../constants/limits.js";
 
-/**
- * Anthropic embedding provider using Voyage AI models
- * https://docs.anthropic.com/en/docs/build-with-claude/embeddings
- */
 export class AnthropicEmbeddingProvider implements EmbeddingProvider {
   readonly id = "anthropic";
   readonly model: string;
@@ -18,7 +14,6 @@ export class AnthropicEmbeddingProvider implements EmbeddingProvider {
     this.apiKey = config.apiKey;
     this.model = config.model ?? "voyage-3-lite";
 
-    // Model dimensions
     const dims: Record<string, number> = {
       "voyage-3": 1024,
       "voyage-3-lite": 512,
@@ -39,7 +34,6 @@ export class AnthropicEmbeddingProvider implements EmbeddingProvider {
   async embedBatch(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    // Voyage API batch limit is 128
     const batchSize = VOYAGE_BATCH_SIZE;
     const results: number[][] = [];
 

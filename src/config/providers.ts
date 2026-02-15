@@ -1,8 +1,3 @@
-/**
- * Multi-provider LLM registry
- * Central source of truth for provider metadata, model defaults, and validation.
- */
-
 export type SupportedProvider = "anthropic" | "openai" | "google" | "xai" | "groq" | "openrouter";
 
 export interface ProviderMetadata {

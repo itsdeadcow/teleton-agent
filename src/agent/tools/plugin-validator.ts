@@ -9,8 +9,6 @@
 import { z } from "zod";
 import type { Config } from "../../config/schema.js";
 
-// ─── Manifest Schema ──────────────────────────────────────────────
-
 const ManifestSchema = z.object({
   name: z
     .string()
@@ -30,14 +28,9 @@ const ManifestSchema = z.object({
 
 export type PluginManifest = z.infer<typeof ManifestSchema>;
 
-/**
- * Validate a raw manifest object. Throws ZodError on failure.
- */
 export function validateManifest(raw: unknown): PluginManifest {
   return ManifestSchema.parse(raw);
 }
-
-// ─── Tool Definition Validation ───────────────────────────────────
 
 export interface SimpleToolDef {
   name: string;
@@ -51,9 +44,6 @@ export interface SimpleToolDef {
   category?: "data-bearing" | "action";
 }
 
-/**
- * Validate and filter tool definitions. Returns only valid tools.
- */
 export function validateToolDefs(defs: unknown[], pluginName: string): SimpleToolDef[] {
   const valid: SimpleToolDef[] = [];
 
@@ -86,19 +76,15 @@ export function validateToolDefs(defs: unknown[], pluginName: string): SimpleToo
   return valid;
 }
 
-// ─── Config Sanitization ──────────────────────────────────────────
-
-/**
- * Strip sensitive fields from config before exposing to external plugins.
- * Plugins should not see API keys, phone numbers, or session paths.
- * Plugins receive their own config via sdk.pluginConfig, not sdk.config.plugins.
- */
 export function sanitizeConfigForPlugins(config: Config): Record<string, unknown> {
   return {
     agent: {
       provider: config.agent.provider,
       model: config.agent.model,
       max_tokens: config.agent.max_tokens,
+    },
+    telegram: {
+      admin_ids: config.telegram.admin_ids,
     },
     deals: { enabled: config.deals.enabled },
     market: { enabled: config.market.enabled },

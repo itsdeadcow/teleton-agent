@@ -21,11 +21,9 @@ import { ModulePermissions } from "./agent/tools/module-permissions.js";
 import { SHUTDOWN_TIMEOUT_MS } from "./constants/timeouts.js";
 import type { PluginModule, PluginContext } from "./agent/tools/types.js";
 import { getMarketService } from "./market/module.js";
+import { PluginWatcher } from "./agent/tools/plugin-watcher.js";
 
-/**
- * Main Tonnet application
- */
-export class TonnetApp {
+export class TeletonApp {
   private config;
   private agent: AgentRuntime;
   private bridge: TelegramBridge;
@@ -38,27 +36,23 @@ export class TonnetApp {
   private modules: PluginModule[] = [];
   private memory: MemorySystem;
   private sdkDeps: SDKDependencies;
+  private webuiServer: any = null; // WebUIServer, imported lazily
+  private pluginWatcher: PluginWatcher | null = null;
 
   constructor(configPath?: string) {
-    // Load configuration
     this.config = loadConfig(configPath);
 
-    // Set TonAPI key if configured
     if (this.config.tonapi_key) {
       setTonapiKey(this.config.tonapi_key);
     }
 
-    // Load soul/personality
     const soul = loadSoul();
 
-    // Create tool registry and register all tools
     this.toolRegistry = new ToolRegistry();
     registerAllTools(this.toolRegistry);
 
-    // Initialize agent with tools (tool count updated after module loading below)
     this.agent = new AgentRuntime(this.config, soul, this.toolRegistry);
 
-    // Initialize Telegram bridge with config
     this.bridge = new TelegramBridge({
       apiId: this.config.telegram.api_id,
       apiHash: this.config.telegram.api_hash,
@@ -69,12 +63,11 @@ export class TonnetApp {
       floodSleepThreshold: TELEGRAM_FLOOD_SLEEP_THRESHOLD,
     });
 
-    // Get memory components (local embeddings — no API key needed)
     this.memory = initializeMemory({
       database: {
         path: join(TELETON_ROOT, "memory.db"),
         enableVectorSearch: true,
-        vectorDimensions: 384, // all-MiniLM-L6-v2
+        vectorDimensions: 384,
       },
       embeddings: {
         provider: "local",
@@ -85,19 +78,14 @@ export class TonnetApp {
 
     const db = getDatabase().getDb();
 
-    // SDK dependencies (shared by built-in plugins and external plugins)
     this.sdkDeps = { bridge: this.bridge };
 
-    // Load built-in plugin modules (deals, market)
     this.modules = loadModules(this.toolRegistry, this.config, db);
 
-    // Initialize per-group module permissions
     const modulePermissions = new ModulePermissions(db);
     this.toolRegistry.setPermissions(modulePermissions);
 
     this.toolCount = this.toolRegistry.count;
-
-    // Initialize handlers with memory stores
     // Market service is created by market module's configure() during loadModules above
     this.messageHandler = new MessageHandler(
       this.bridge,
@@ -155,11 +143,8 @@ ${blue}  ┌──────────────────────�
         mod.configure?.(this.config);
         mod.migrate?.(getDatabase().getDb());
         const tools = mod.tools(this.config);
-        for (const { tool, executor, scope } of tools) {
-          if (!this.toolRegistry.has(tool.name)) {
-            this.toolRegistry.register(tool, executor, scope);
-            pluginToolCount++;
-          }
+        if (tools.length > 0) {
+          pluginToolCount += this.toolRegistry.registerPluginTools(mod.name, tools);
         }
         this.modules.push(mod);
         const toolCount = tools.length;
@@ -178,6 +163,9 @@ ${blue}  ┌──────────────────────�
     if (pluginToolCount > 0) {
       this.toolCount = this.toolRegistry.count;
     }
+
+    // Initialize tool config from database
+    this.toolRegistry.loadConfigFromDB(getDatabase().getDb());
 
     // Provider info and tool limit check
     const provider = (this.config.agent.provider || "anthropic") as SupportedProvider;
@@ -237,6 +225,19 @@ ${blue}  ┌──────────────────────�
       await mod.start?.(pluginContext);
     }
 
+    // Start plugin hot-reload watcher (dev mode)
+    if (this.config.dev.hot_reload) {
+      this.pluginWatcher = new PluginWatcher({
+        config: this.config,
+        registry: this.toolRegistry,
+        sdkDeps: this.sdkDeps,
+        modules: this.modules,
+        pluginContext,
+        loadedModuleNames: builtinNames,
+      });
+      this.pluginWatcher.start();
+    }
+
     // Display startup summary
     console.log(`✅ SOUL.md loaded`);
     console.log(
@@ -256,6 +257,25 @@ ${blue}  ┌──────────────────────�
     );
 
     console.log("Teleton Agent is running! Press Ctrl+C to stop.\n");
+
+    // Start WebUI server if enabled
+    if (this.config.webui.enabled) {
+      try {
+        const { WebUIServer } = await import("./webui/server.js");
+        this.webuiServer = new WebUIServer({
+          agent: this.agent,
+          bridge: this.bridge,
+          memory: this.memory,
+          toolRegistry: this.toolRegistry,
+          plugins: this.modules.map((m) => ({ name: m.name, version: m.version ?? "0.0.0" })),
+          config: this.config.webui,
+        });
+        await this.webuiServer.start();
+      } catch (error) {
+        console.error("❌ Failed to start WebUI server:", error);
+        console.warn("⚠️ Continuing without WebUI...");
+      }
+    }
 
     // Initialize message debouncer with bypass logic
     this.debouncer = new MessageDebouncer(
@@ -518,20 +538,61 @@ ${blue}  ┌──────────────────────�
    * Stop the agent
    */
   async stop(): Promise<void> {
-    console.log("\n👋 Stopping Tonnet AI...");
+    console.log("\n👋 Stopping Teleton AI...");
 
-    // Flush any pending debounced messages
+    // Stop WebUI server first (if running)
+    if (this.webuiServer) {
+      try {
+        await this.webuiServer.stop();
+      } catch (e) {
+        console.error("⚠️ WebUI stop failed:", e);
+      }
+    }
+
+    // Stop plugin watcher first
+    if (this.pluginWatcher) {
+      try {
+        await this.pluginWatcher.stop();
+      } catch (e) {
+        console.error("⚠️ Plugin watcher stop failed:", e);
+      }
+    }
+
+    // Each step is isolated so a failure in one doesn't skip the rest
     if (this.debouncer) {
-      await this.debouncer.flushAll();
+      try {
+        await this.debouncer.flushAll();
+      } catch (e) {
+        console.error("⚠️ Debouncer flush failed:", e);
+      }
     }
 
-    // Stop module background jobs (deals bot/poller/expiry, market service, etc.)
+    // Drain in-flight message processing before disconnecting
+    try {
+      await this.messageHandler.drain();
+    } catch (e) {
+      console.error("⚠️ Message queue drain failed:", e);
+    }
+
     for (const mod of this.modules) {
-      await mod.stop?.();
+      try {
+        await mod.stop?.();
+      } catch (e) {
+        console.error(`⚠️ Module "${mod.name}" stop failed:`, e);
+      }
     }
 
-    await this.bridge.disconnect();
-    closeDatabase();
+    try {
+      await this.bridge.disconnect();
+    } catch (e) {
+      console.error("⚠️ Bridge disconnect failed:", e);
+    }
+
+    try {
+      closeDatabase();
+    } catch (e) {
+      console.error("⚠️ Database close failed:", e);
+    }
   }
 }
 
@@ -539,9 +600,9 @@ ${blue}  ┌──────────────────────�
  * Start the application
  */
 export async function main(configPath?: string): Promise<void> {
-  let app: TonnetApp;
+  let app: TeletonApp;
   try {
-    app = new TonnetApp(configPath);
+    app = new TeletonApp(configPath);
   } catch (error) {
     console.error("Failed to initialize:", error instanceof Error ? error.message : error);
     process.exit(1);

@@ -2,10 +2,6 @@ import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { DEDUST_API_URL } from "./constants.js";
 import { fetchWithTimeout } from "../../../utils/fetch.js";
-
-/**
- * Parameters for dedust_prices tool
- */
 interface DedustPricesParams {
   symbols?: string[];
 }
@@ -18,10 +14,6 @@ interface PriceEntry {
   price: number;
   updatedAt: string;
 }
-
-/**
- * Tool definition for dedust_prices
- */
 export const dedustPricesTool: Tool = {
   name: "dedust_prices",
   description:
@@ -39,10 +31,6 @@ export const dedustPricesTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for dedust_prices tool
- */
 export const dedustPricesExecutor: ToolExecutor<DedustPricesParams> = async (
   params,
   _context
@@ -66,7 +54,6 @@ export const dedustPricesExecutor: ToolExecutor<DedustPricesParams> = async (
     // Sort by symbol
     prices.sort((a, b) => a.symbol.localeCompare(b.symbol));
 
-    // Build message
     let message = `DeDust Prices (${prices.length} tokens):\n\n`;
     for (const p of prices) {
       const priceStr =

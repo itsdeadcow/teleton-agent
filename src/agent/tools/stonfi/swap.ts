@@ -10,20 +10,12 @@ import { StonApiClient } from "@ston-fi/api";
 
 // Native TON address used by STON.fi API
 const NATIVE_TON_ADDRESS = "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c";
-
-/**
- * Parameters for jetton_swap tool
- */
 interface JettonSwapParams {
   from_asset: string;
   to_asset: string;
   amount: number;
   slippage?: number;
 }
-
-/**
- * Tool definition for jetton_swap
- */
 export const stonfiSwapTool: Tool = {
   name: "stonfi_swap",
   description:
@@ -48,10 +40,6 @@ export const stonfiSwapTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for jetton_swap tool
- */
 export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
   params,
   context
@@ -59,7 +47,6 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
   try {
     const { from_asset, to_asset, amount, slippage = 0.01 } = params;
 
-    // Load wallet
     const walletData = loadWallet();
     if (!walletData) {
       return {
@@ -68,13 +55,11 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
       };
     }
 
-    // Normalize asset addresses
     // STON.fi API requires the native TON address, not the string "ton"
     const isTonInput = from_asset.toLowerCase() === "ton";
     const fromAddress = isTonInput ? NATIVE_TON_ADDRESS : from_asset;
     const toAddress = to_asset;
 
-    // Validate addresses (skip validation for native TON)
     if (!isTonInput && !fromAddress.match(/^[EUe][Qq][A-Za-z0-9_-]{46}$/)) {
       return {
         success: false,
@@ -88,17 +73,20 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
       };
     }
 
-    // Initialize STON.fi clients
     const endpoint = await getCachedHttpEndpoint();
     const tonClient = new TonClient({ endpoint });
     const stonApiClient = new StonApiClient();
 
-    // Simulate swap to get routing and expected amounts
+    // Fetch decimals for accurate conversion (TON=9, USDT=6, WBTC=8, etc.)
+    const fromAssetInfo = await stonApiClient.getAsset(fromAddress);
+    const fromDecimals = fromAssetInfo?.decimals ?? 9;
+    const offerUnits = BigInt(Math.round(amount * 10 ** fromDecimals)).toString();
+
     console.log(`Simulating swap: ${amount} ${fromAddress} → ${toAddress}`);
     const simulationResult = await stonApiClient.simulateSwap({
       offerAddress: fromAddress,
       askAddress: toAddress,
-      offerUnits: toNano(amount).toString(),
+      offerUnits,
       slippageTolerance: slippage.toString(),
     });
 
@@ -109,11 +97,9 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
       };
     }
 
-    // Build DEX contracts from router metadata
     const { router: routerInfo } = simulationResult;
     const router = tonClient.open(new DEX.v1.Router(routerInfo.address));
 
-    // Prepare wallet
     const keyPair = await mnemonicToPrivateKey(walletData.mnemonic);
     const wallet = WalletContractV5R1.create({
       workchain: 0,
@@ -122,7 +108,6 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
     const walletContract = tonClient.open(wallet);
     const seqno = await walletContract.getSeqno();
 
-    // Determine swap type and build transaction
     let txParams;
 
     if (isTonInput) {
@@ -157,7 +142,6 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
       });
     }
 
-    // Execute swap
     await walletContract.sendTransfer({
       seqno,
       secretKey: keyPair.secretKey,
@@ -172,8 +156,11 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
       ],
     });
 
-    // Calculate expected output
-    const expectedOutput = Number(BigInt(simulationResult.askUnits) / BigInt(10 ** 9)) / 10 ** 9; // Approximate
+    // Fetch ask asset decimals for accurate output conversion
+    const toAssetInfo = await stonApiClient.getAsset(toAddress);
+    const askDecimals = toAssetInfo?.decimals ?? 9;
+    const expectedOutput = Number(simulationResult.askUnits) / 10 ** askDecimals;
+    const minOutput = Number(simulationResult.minAskUnits) / 10 ** askDecimals;
 
     return {
       success: true,
@@ -182,11 +169,11 @@ export const stonfiSwapExecutor: ToolExecutor<JettonSwapParams> = async (
         to: toAddress,
         amountIn: amount.toString(),
         expectedOutput: expectedOutput.toFixed(6),
-        minOutput: (Number(simulationResult.minAskUnits) / 10 ** 9).toFixed(6),
+        minOutput: minOutput.toFixed(6),
         slippage: `${(slippage * 100).toFixed(2)}%`,
         priceImpact: simulationResult.priceImpact || "N/A",
         router: routerInfo.address,
-        message: `Swapped ${amount} ${isTonInput ? "TON" : "tokens"} for ~${expectedOutput.toFixed(4)} tokens\n  Minimum output: ${(Number(simulationResult.minAskUnits) / 10 ** 9).toFixed(4)}\n  Slippage: ${(slippage * 100).toFixed(2)}%\n  Transaction sent (check balance in ~30 seconds)`,
+        message: `Swapped ${amount} ${isTonInput ? "TON" : "tokens"} for ~${expectedOutput.toFixed(4)} tokens\n  Minimum output: ${minOutput.toFixed(4)}\n  Slippage: ${(slippage * 100).toFixed(2)}%\n  Transaction sent (check balance in ~30 seconds)`,
       },
     };
   } catch (error) {

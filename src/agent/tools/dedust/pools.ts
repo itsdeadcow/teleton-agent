@@ -2,10 +2,6 @@ import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { DEDUST_API_URL } from "./constants.js";
 import { fetchWithTimeout } from "../../../utils/fetch.js";
-
-/**
- * Parameters for dedust_pools tool
- */
 interface DedustPoolsParams {
   jetton_address?: string;
   pool_type?: "volatile" | "stable";
@@ -42,10 +38,6 @@ interface DedustPoolResponse {
     fees24h?: string;
   };
 }
-
-/**
- * Tool definition for dedust_pools
- */
 export const dedustPoolsTool: Tool = {
   name: "dedust_pools",
   description:
@@ -71,10 +63,6 @@ export const dedustPoolsTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for dedust_pools tool
- */
 export const dedustPoolsExecutor: ToolExecutor<DedustPoolsParams> = async (
   params,
   context

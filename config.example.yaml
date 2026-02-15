@@ -35,6 +35,17 @@ telegram:
 # Optional: TonAPI key for higher rate limits
 # tonapi_key: "YOUR_TONAPI_KEY"      # From @tonapi_bot
 
+# Optional: WebUI dashboard (disabled by default for security)
+webui:
+  enabled: false                      # Enable web dashboard
+  port: 7777                          # HTTP server port
+  host: "127.0.0.1"                   # Localhost only (secure)
+  # auth_token: "..."                 # Auto-generated if omitted
+  cors_origins:
+    - "http://localhost:5173"         # Vite dev server
+    - "http://localhost:7777"         # Production server
+  log_requests: false                 # Log HTTP requests
+
 # Optional sections (defaults are fine for most users)
 # casino:
 #   enabled: true

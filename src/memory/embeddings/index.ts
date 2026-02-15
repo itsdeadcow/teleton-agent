@@ -9,9 +9,6 @@ export * from "./anthropic.js";
 export * from "./local.js";
 export * from "./cached.js";
 
-/**
- * Create an embedding provider based on configuration
- */
 export function createEmbeddingProvider(config: EmbeddingProviderConfig): EmbeddingProvider {
   switch (config.provider) {
     case "anthropic":
@@ -36,22 +33,16 @@ export function createEmbeddingProvider(config: EmbeddingProviderConfig): Embedd
   }
 }
 
-/**
- * Compute SHA-256 hash for text (for caching and content dedup)
- */
 export function hashText(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-/**
- * Serialize embedding to binary blob for storage
- */
 export function serializeEmbedding(embedding: number[]): Buffer {
   return Buffer.from(new Float32Array(embedding).buffer);
 }
 
 /**
- * Deserialize embedding from storage (handles both BLOB and legacy JSON TEXT)
+ * Deserialize embedding from storage (handles BLOB and legacy JSON TEXT).
  */
 export function deserializeEmbedding(data: Buffer | string): number[] {
   try {
@@ -59,7 +50,6 @@ export function deserializeEmbedding(data: Buffer | string): number[] {
       const floats = new Float32Array(data.buffer, data.byteOffset, data.byteLength / 4);
       return Array.from(floats);
     }
-    // Legacy: JSON string format
     return JSON.parse(data) as number[];
   } catch {
     return [];

@@ -2,10 +2,6 @@ import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { loadWallet } from "../../../ton/wallet-service.js";
 import { tonapiFetch } from "../../../constants/api-endpoints.js";
-
-/**
- * Parameters for jetton_balances tool
- */
 interface JettonBalancesParams {
   // No parameters - uses agent's wallet
 }
@@ -25,10 +21,6 @@ interface JettonBalance {
   score: number; // 0-100 trust score
   image?: string;
 }
-
-/**
- * Tool definition for jetton_balances
- */
 export const jettonBalancesTool: Tool = {
   name: "jetton_balances",
   description:
@@ -36,16 +28,11 @@ export const jettonBalancesTool: Tool = {
   parameters: Type.Object({}),
   category: "data-bearing",
 };
-
-/**
- * Executor for jetton_balances tool
- */
 export const jettonBalancesExecutor: ToolExecutor<JettonBalancesParams> = async (
   params,
   context
 ): Promise<ToolResult> => {
   try {
-    // Load wallet
     const walletData = loadWallet();
     if (!walletData) {
       return {

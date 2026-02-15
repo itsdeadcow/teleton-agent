@@ -1,7 +1,3 @@
-/**
- * Callback query handler for inline button clicks
- */
-
 import type { TelegramBridge } from "../bridge.js";
 import type Database from "better-sqlite3";
 
@@ -14,10 +10,6 @@ export type CallbackHandler = (data: {
   userId: number;
 }) => Promise<void>;
 
-/**
- * CallbackQueryHandler class
- * Routes callback queries to registered handlers
- */
 export class CallbackQueryHandler {
   private handlers: Map<string, CallbackHandler> = new Map();
 
@@ -26,17 +18,10 @@ export class CallbackQueryHandler {
     private db: Database.Database
   ) {}
 
-  /**
-   * Register a handler for a specific action prefix
-   * Example: register("deal", dealHandler) handles all "deal:*" callbacks
-   */
   register(actionPrefix: string, handler: CallbackHandler): void {
     this.handlers.set(actionPrefix, handler);
   }
 
-  /**
-   * Handle callback query event from Telegram
-   */
   async handle(event: any): Promise<void> {
     try {
       const queryId = event.queryId;
@@ -47,12 +32,10 @@ export class CallbackQueryHandler {
 
       console.log(`📞 [Callback] Received: data="${data}" from user ${userId} in chat ${chatId}`);
 
-      // Parse callback data: "action:param1:param2:..."
       const parts = data.split(":");
       const action = parts[0];
       const params = parts.slice(1);
 
-      // Find handler
       const handler = this.handlers.get(action);
       if (!handler) {
         console.warn(`⚠️ No handler for callback action: ${action}`);
@@ -60,7 +43,6 @@ export class CallbackQueryHandler {
         return;
       }
 
-      // Execute handler
       await handler({
         action,
         params,
@@ -71,16 +53,12 @@ export class CallbackQueryHandler {
       });
     } catch (error) {
       console.error("❌ Error handling callback query:", error);
-      // Answer callback with error
       if (event?.queryId) {
         await this.answerCallback(event.queryId, "An error occurred. Please try again.");
       }
     }
   }
 
-  /**
-   * Answer callback query (toast notification)
-   */
   private async answerCallback(queryId: any, message?: string, alert = false): Promise<void> {
     try {
       await this.bridge.getClient().answerCallbackQuery(queryId, { message, alert });

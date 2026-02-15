@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
 import { dirname } from "path";
 import { join } from "path";
 import { TELETON_ROOT } from "../workspace/paths.js";
@@ -57,7 +57,10 @@ function saveState(state: OffsetState): void {
       mkdirSync(dir, { recursive: true });
     }
 
-    writeFileSync(OFFSET_FILE, JSON.stringify(state, null, 2), "utf-8");
+    // Atomic write: write to temp file, then rename (POSIX atomic)
+    const tmpFile = OFFSET_FILE + ".tmp";
+    writeFileSync(tmpFile, JSON.stringify(state, null, 2), "utf-8");
+    renameSync(tmpFile, OFFSET_FILE);
     offsetCache = state;
   } catch (error) {
     console.error("Failed to write offset store:", error);

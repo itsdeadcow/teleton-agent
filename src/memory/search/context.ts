@@ -21,9 +21,6 @@ export interface Context {
   estimatedTokens: number;
 }
 
-/**
- * Build context for Claude from memory + feed
- */
 export class ContextBuilder {
   private hybridSearch: HybridSearch;
   private messageStore: MessageStore;
@@ -48,17 +45,14 @@ export class ContextBuilder {
       maxRelevantChunks = 5,
     } = options;
 
-    // Embed query for semantic search (if embeddings are enabled)
     const queryEmbedding = await this.embedder.embedQuery(query);
 
-    // Get recent messages from current chat
     const recentTgMessages = this.messageStore.getRecentMessages(chatId, maxRecentMessages);
     const recentMessages = recentTgMessages.map((m) => ({
       role: m.isFromAgent ? "assistant" : "user",
       content: m.text ?? "",
     }));
 
-    // Search agent memory (from knowledge base)
     const relevantKnowledge: string[] = [];
     if (includeAgentMemory) {
       try {
@@ -71,24 +65,27 @@ export class ContextBuilder {
       }
     }
 
-    // Search feed history (semantic search on past messages)
+    const recentTextsSet = new Set(
+      recentTgMessages.filter((m) => m.text && m.text.length > 0).map((m) => m.text!)
+    );
+
     const relevantFeed: string[] = [];
     if (includeFeedHistory) {
       try {
-        // Search current chat
         const feedResults = await this.hybridSearch.searchMessages(query, queryEmbedding, {
           chatId,
           limit: maxRelevantChunks,
         });
-        relevantFeed.push(...feedResults.map((r) => r.text));
+        for (const r of feedResults) {
+          if (!recentTextsSet.has(r.text)) {
+            relevantFeed.push(r.text);
+          }
+        }
 
-        // Also search all chats if requested (for cross-group context)
         if (searchAllChats) {
           const globalResults = await this.hybridSearch.searchMessages(query, queryEmbedding, {
-            // No chatId = search all chats
             limit: maxRelevantChunks,
           });
-          // Add results from other chats (avoiding duplicates)
           const existingTexts = new Set(relevantFeed);
           for (const r of globalResults) {
             if (!existingTexts.has(r.text)) {
@@ -100,8 +97,6 @@ export class ContextBuilder {
         console.warn("Feed search failed:", error);
       }
 
-      // If semantic search returned nothing, include recent messages as feed context
-      // This ensures the agent always has some memory even without embeddings
       if (relevantFeed.length === 0 && recentTgMessages.length > 0) {
         const recentTexts = recentTgMessages
           .filter((m) => m.text && m.text.length > 0)
@@ -114,7 +109,6 @@ export class ContextBuilder {
       }
     }
 
-    // Estimate tokens (rough: 1 token ≈ 4 chars)
     const allText =
       recentMessages.map((m) => m.content).join(" ") +
       relevantKnowledge.join(" ") +

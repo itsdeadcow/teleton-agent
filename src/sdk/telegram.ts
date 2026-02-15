@@ -1,7 +1,3 @@
-/**
- * TelegramSDK implementation — wraps TelegramBridge for plugin access.
- */
-
 import type { TelegramBridge } from "../telegram/bridge.js";
 import { randomBytes } from "crypto";
 import type {
@@ -12,11 +8,10 @@ import type {
   TelegramUser,
   SimpleMessage,
   PluginLogger,
-} from "./types.js";
-import { PluginSDKError } from "./errors.js";
+} from "@teleton-agent/sdk";
+import { PluginSDKError } from "@teleton-agent/sdk";
 
 export function createTelegramSDK(bridge: TelegramBridge, log: PluginLogger): TelegramSDK {
-  /** Guard: ensure bridge is connected before any operation */
   function requireBridge(): void {
     if (!bridge.isAvailable()) {
       throw new PluginSDKError(
@@ -83,7 +78,6 @@ export function createTelegramSDK(bridge: TelegramBridge, log: PluginLogger): Te
           })
         );
 
-        // Extract value from Updates
         let value: number | undefined;
         let messageId: number | undefined;
 

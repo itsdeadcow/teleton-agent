@@ -1,7 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
-import { Api } from "telegram";
-import bigInt from "big-integer";
+import { Api, helpers } from "telegram";
 import { CustomFile } from "telegram/client/uploads.js";
 import { readFileSync, statSync } from "fs";
 import { basename } from "path";
@@ -139,7 +138,7 @@ export const telegramSendStoryExecutor: ToolExecutor<SendStoryParams> = async (
         media: inputMedia,
         caption: caption || "",
         privacyRules,
-        randomId: bigInt(Date.now().toString()),
+        randomId: helpers.generateRandomBigInt(),
       })
     );
 

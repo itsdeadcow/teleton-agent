@@ -355,7 +355,7 @@ For contributors, create a TypeScript tool in `src/agent/tools/` and register it
 
 ```
 src/
-├── index.ts        # Main application entry point (TonnetApp)
+├── index.ts        # Main application entry point (TeletonApp)
 ├── agent/          # LLM runtime, tool registry, 116 tool implementations
 │   └── tools/      # telegram/, ton/, stonfi/, dedust/, dns/, journal/, workspace/
 ├── telegram/       # GramJS bridge, message handlers, admin commands, debouncing

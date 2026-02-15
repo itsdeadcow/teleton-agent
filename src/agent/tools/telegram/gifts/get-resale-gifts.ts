@@ -50,6 +50,14 @@ export const telegramGetResaleGiftsExecutor: ToolExecutor<GetResaleGiftsParams> 
     const { giftId, limit = 30, sortByPrice = false } = params;
     const gramJsClient = context.bridge.getClient().getClient();
 
+    if (!(Api.payments as any).GetResaleStarGifts) {
+      return {
+        success: false,
+        error:
+          "Resale gift marketplace is not supported in the current Telegram API layer. A GramJS update is required.",
+      };
+    }
+
     const result: any = await gramJsClient.invoke(
       new (Api.payments as any).GetResaleStarGifts({
         giftId: giftId ? BigInt(giftId) : undefined,

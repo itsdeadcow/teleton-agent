@@ -1,17 +1,9 @@
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { tonapiFetch } from "../../../constants/api-endpoints.js";
-
-/**
- * Parameters for dns_check tool
- */
 interface DnsCheckParams {
   domain: string;
 }
-
-/**
- * Tool definition for dns_check
- */
 export const dnsCheckTool: Tool = {
   name: "dns_check",
   description:
@@ -32,10 +24,6 @@ function estimateMinPrice(length: number): string {
   if (length >= 6 && length <= 10) return "~5-10 TON";
   return "~1 TON";
 }
-
-/**
- * Executor for dns_check tool
- */
 export const dnsCheckExecutor: ToolExecutor<DnsCheckParams> = async (
   params,
   context

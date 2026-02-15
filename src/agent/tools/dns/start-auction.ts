@@ -7,18 +7,10 @@ import { Address, SendMode } from "@ton/core";
 import { getCachedHttpEndpoint } from "../../../ton/endpoint.js";
 
 const DNS_COLLECTION = "EQC3dNlesgVD8YbAazcauIrXBPfiVhMMr5YYk2in0Mtsz0Bz";
-
-/**
- * Parameters for dns_start_auction tool
- */
 interface DnsStartAuctionParams {
   domain: string;
   amount: number;
 }
-
-/**
- * Tool definition for dns_start_auction
- */
 export const dnsStartAuctionTool: Tool = {
   name: "dns_start_auction",
   description:
@@ -34,10 +26,6 @@ export const dnsStartAuctionTool: Tool = {
     }),
   }),
 };
-
-/**
- * Executor for dns_start_auction tool
- */
 export const dnsStartAuctionExecutor: ToolExecutor<DnsStartAuctionParams> = async (
   params,
   context
@@ -62,7 +50,6 @@ export const dnsStartAuctionExecutor: ToolExecutor<DnsStartAuctionParams> = asyn
       };
     }
 
-    // Load wallet
     const walletData = loadWallet();
     if (!walletData) {
       return {
@@ -71,21 +58,17 @@ export const dnsStartAuctionExecutor: ToolExecutor<DnsStartAuctionParams> = asyn
       };
     }
 
-    // Convert mnemonic to private key
     const keyPair = await mnemonicToPrivateKey(walletData.mnemonic);
 
-    // Create wallet contract
     const wallet = WalletContractV5R1.create({
       workchain: 0,
       publicKey: keyPair.publicKey,
     });
 
-    // Get decentralized endpoint
     const endpoint = await getCachedHttpEndpoint();
     const client = new TonClient({ endpoint });
     const contract = client.open(wallet);
 
-    // Get current seqno
     const seqno = await contract.getSeqno();
 
     // Build message body: op=0, domain as UTF-8 string

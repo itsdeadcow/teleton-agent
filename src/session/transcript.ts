@@ -14,25 +14,16 @@ import { TELETON_ROOT } from "../workspace/paths.js";
 
 const SESSIONS_DIR = join(TELETON_ROOT, "sessions");
 
-/**
- * Get transcript file path for a session
- */
 export function getTranscriptPath(sessionId: string): string {
   return join(SESSIONS_DIR, `${sessionId}.jsonl`);
 }
 
-/**
- * Ensure sessions directory exists
- */
 function ensureSessionsDir(): void {
   if (!existsSync(SESSIONS_DIR)) {
     mkdirSync(SESSIONS_DIR, { recursive: true });
   }
 }
 
-/**
- * Append a message to the transcript
- */
 export function appendToTranscript(sessionId: string, message: Message | AssistantMessage): void {
   ensureSessionsDir();
 
@@ -46,9 +37,6 @@ export function appendToTranscript(sessionId: string, message: Message | Assista
   }
 }
 
-/**
- * Extract tool call IDs from an assistant message
- */
 function extractToolCallIds(msg: Message | AssistantMessage): Set<string> {
   const ids = new Set<string>();
   if (msg.role === "assistant" && Array.isArray(msg.content)) {
@@ -64,15 +52,9 @@ function extractToolCallIds(msg: Message | AssistantMessage): Set<string> {
 }
 
 /**
- * Sanitize messages to remove orphaned or out-of-order toolResults
- *
- * The Anthropic API requires that tool_results IMMEDIATELY follow their
- * corresponding tool_use in the assistant message. This function:
- * 1. Removes tool_results that reference non-existent tool_uses
- * 2. Removes tool_results that are out of order (separated by user messages)
- *
- * Valid structure: [assistant tool_use A,B] → [tool_result A] → [tool_result B] → [next msg]
- * Invalid: [assistant tool_use A,B] → [user] → [tool_result A] (out of order!)
+ * Sanitize messages to remove orphaned or out-of-order toolResults.
+ * Anthropic API requires tool_results IMMEDIATELY follow their corresponding tool_use.
+ * Removes: 1) tool_results referencing non-existent tool_uses, 2) out-of-order tool_results.
  */
 function sanitizeMessages(
   messages: (Message | AssistantMessage)[]
@@ -85,51 +67,39 @@ function sanitizeMessages(
     const msg = messages[i];
 
     if (msg.role === "assistant") {
-      // New assistant message - extract any tool call IDs
       const newToolIds = extractToolCallIds(msg);
 
-      // If we still have pending tool calls from a PREVIOUS assistant message,
-      // and this assistant has NO tool calls, that's okay (final response)
-      // But if there are still pending IDs when we get a new tool-calling assistant,
-      // the old ones are orphaned
       if (pendingToolCallIds.size > 0 && newToolIds.size > 0) {
         console.warn(
           `⚠️ Found ${pendingToolCallIds.size} pending tool results that were never received`
         );
       }
 
-      // Start tracking new tool calls
       pendingToolCallIds = newToolIds;
       sanitized.push(msg);
     } else if (msg.role === "toolResult" || (msg as any).role === "tool_result") {
-      // Tool result - check if it matches a pending tool call
       const toolCallId =
         (msg as any).toolCallId || (msg as any).tool_use_id || (msg as any).tool_call_id;
 
       if (toolCallId && pendingToolCallIds.has(toolCallId)) {
-        // Valid tool result - matches a pending call
         pendingToolCallIds.delete(toolCallId);
         sanitized.push(msg);
       } else {
-        // Invalid - either orphaned or out of order
         removedCount++;
         console.warn(
           `🧹 Removing out-of-order/orphaned toolResult: ${toolCallId?.slice(0, 20)}...`
         );
-        continue; // Skip this message
+        continue;
       }
     } else if (msg.role === "user") {
-      // User message interrupts the tool call flow
-      // Any pending tool calls are now orphaned (their results would be out of order)
       if (pendingToolCallIds.size > 0) {
         console.warn(
           `⚠️ User message arrived while ${pendingToolCallIds.size} tool results pending - marking them as orphaned`
         );
-        pendingToolCallIds.clear(); // Clear pending - any late results will be removed
+        pendingToolCallIds.clear();
       }
       sanitized.push(msg);
     } else {
-      // Other message types (system, etc.)
       sanitized.push(msg);
     }
   }
@@ -141,9 +111,6 @@ function sanitizeMessages(
   return sanitized;
 }
 
-/**
- * Read entire transcript for a session
- */
 export function readTranscript(sessionId: string): (Message | AssistantMessage)[] {
   const transcriptPath = getTranscriptPath(sessionId);
 
@@ -155,9 +122,23 @@ export function readTranscript(sessionId: string): (Message | AssistantMessage)[
     const content = readFileSync(transcriptPath, "utf-8");
     const lines = content.trim().split("\n").filter(Boolean);
 
-    const messages = lines.map((line) => JSON.parse(line));
+    let corruptCount = 0;
+    const messages = lines
+      .map((line, i) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          corruptCount++;
+          console.warn(`⚠️ Skipping corrupt line ${i + 1} in transcript ${sessionId}`);
+          return null;
+        }
+      })
+      .filter(Boolean);
 
-    // Sanitize to remove orphaned toolResults
+    if (corruptCount > 0) {
+      console.warn(`⚠️ ${corruptCount} corrupt line(s) skipped in transcript ${sessionId}`);
+    }
+
     return sanitizeMessages(messages);
   } catch (error) {
     console.error(`Failed to read transcript ${sessionId}:`, error);
@@ -165,16 +146,10 @@ export function readTranscript(sessionId: string): (Message | AssistantMessage)[
   }
 }
 
-/**
- * Check if transcript exists for session
- */
 export function transcriptExists(sessionId: string): boolean {
   return existsSync(getTranscriptPath(sessionId));
 }
 
-/**
- * Get transcript line count (approximate message count)
- */
 export function getTranscriptSize(sessionId: string): number {
   try {
     const messages = readTranscript(sessionId);
@@ -184,9 +159,6 @@ export function getTranscriptSize(sessionId: string): number {
   }
 }
 
-/**
- * Delete a transcript file
- */
 export function deleteTranscript(sessionId: string): boolean {
   const transcriptPath = getTranscriptPath(sessionId);
 
@@ -205,7 +177,7 @@ export function deleteTranscript(sessionId: string): boolean {
 }
 
 /**
- * Archive a transcript (rename with timestamped .archived suffix) before deletion
+ * Archive a transcript (rename with timestamped .archived suffix).
  */
 export function archiveTranscript(sessionId: string): boolean {
   const transcriptPath = getTranscriptPath(sessionId);
@@ -228,7 +200,6 @@ export function archiveTranscript(sessionId: string): boolean {
 
 /**
  * Delete transcript and archived files older than maxAgeDays.
- * Call once at startup to prevent unbounded growth.
  */
 export function cleanupOldTranscripts(maxAgeDays: number = 30): number {
   if (!existsSync(SESSIONS_DIR)) return 0;
@@ -246,9 +217,7 @@ export function cleanupOldTranscripts(maxAgeDays: number = 30): number {
           unlinkSync(filePath);
           deleted++;
         }
-      } catch {
-        // skip files we can't stat/delete
-      }
+      } catch {}
     }
   } catch (error) {
     console.error("Failed to cleanup old transcripts:", error);

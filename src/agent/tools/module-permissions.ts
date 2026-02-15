@@ -10,7 +10,6 @@ const PROTECTED_MODULES = new Set(["telegram", "memory"]);
  */
 export class ModulePermissions {
   private db: Database.Database;
-  /** chatId → module → level */
   private cache: Map<string, Map<string, ModuleLevel>> = new Map();
 
   constructor(db: Database.Database) {
@@ -47,19 +46,16 @@ export class ModulePermissions {
     }
   }
 
-  /** Get the effective level for a module in a chat. Default: "open". */
   getLevel(chatId: string, module: string): ModuleLevel {
     return this.cache.get(chatId)?.get(module) ?? "open";
   }
 
-  /** Set the level for a module in a chat. Throws if module is protected. */
   setLevel(chatId: string, module: string, level: ModuleLevel, userId?: number): void {
     if (PROTECTED_MODULES.has(module)) {
       throw new Error(`Module "${module}" is protected`);
     }
 
     if (level === "open") {
-      // Default level → delete override
       this.db
         .prepare("DELETE FROM group_modules WHERE chat_id = ? AND module = ?")
         .run(chatId, module);
@@ -81,7 +77,6 @@ export class ModulePermissions {
     }
   }
 
-  /** Reset a single module to default ("open"). */
   resetModule(chatId: string, module: string): void {
     this.db
       .prepare("DELETE FROM group_modules WHERE chat_id = ? AND module = ?")
@@ -89,18 +84,15 @@ export class ModulePermissions {
     this.cache.get(chatId)?.delete(module);
   }
 
-  /** Reset all modules for a chat to default ("open"). */
   resetAll(chatId: string): void {
     this.db.prepare("DELETE FROM group_modules WHERE chat_id = ?").run(chatId);
     this.cache.delete(chatId);
   }
 
-  /** Get all non-default overrides for a chat. */
   getOverrides(chatId: string): Map<string, ModuleLevel> {
     return this.cache.get(chatId) ?? new Map();
   }
 
-  /** Check if a module is protected (always open, cannot be changed). */
   isProtected(module: string): boolean {
     return PROTECTED_MODULES.has(module);
   }

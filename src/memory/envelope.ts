@@ -1,8 +1,3 @@
-/**
- * Message envelope formatting (OpenClaw-style)
- * Formats messages with rich metadata: channel, sender, elapsed time, timestamp
- */
-
 import { sanitizeForPrompt } from "../utils/sanitize.js";
 
 export interface EnvelopeParams {
@@ -21,9 +16,6 @@ export interface EnvelopeParams {
   messageId?: number; // For media download reference
 }
 
-/**
- * Format elapsed time between messages
- */
 function formatElapsed(elapsedMs: number): string {
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
     return "";
@@ -48,9 +40,6 @@ function formatElapsed(elapsedMs: number): string {
   return `${days}d`;
 }
 
-/**
- * Format timestamp in local timezone
- */
 function formatTimestamp(timestamp: number): string {
   const date = new Date(timestamp);
   const yyyy = date.getFullYear();
@@ -59,7 +48,6 @@ function formatTimestamp(timestamp: number): string {
   const hh = String(date.getHours()).padStart(2, "0");
   const min = String(date.getMinutes()).padStart(2, "0");
 
-  // Get timezone abbreviation
   const tz = Intl.DateTimeFormat("en", {
     timeZoneName: "short",
   })
@@ -70,8 +58,8 @@ function formatTimestamp(timestamp: number): string {
 }
 
 /**
- * Build sender label for envelope
- * In groups, show "Name (@username)" if both available
+ * Build sender label for envelope.
+ * Format: "Name (@username, id:123)" or variations with available fields.
  */
 function buildSenderLabel(params: EnvelopeParams): string {
   const name = params.senderName ? sanitizeForPrompt(params.senderName) : undefined;
@@ -80,8 +68,6 @@ function buildSenderLabel(params: EnvelopeParams): string {
     : undefined;
   const idTag = params.senderId ? `id:${params.senderId}` : undefined;
 
-  // Always include senderId for unambiguous identification
-  // Format: "Name (@user, id:123)" | "Name (id:123)" | "@user (id:123)" | "id:123" | "unknown"
   const primary = name || username;
   const meta = [username, idTag].filter((v) => v && v !== primary);
 
@@ -92,24 +78,14 @@ function buildSenderLabel(params: EnvelopeParams): string {
   return idTag || "unknown";
 }
 
-/**
- * Format message envelope OpenClaw-style
- * Example: [Telegram Alice +5m 2024-01-15 14:30 CET] Hello!
- */
 export function formatMessageEnvelope(params: EnvelopeParams): string {
   const parts: string[] = [params.channel];
 
-  // Add sender (for groups) or from label (for DMs)
   const senderLabel = buildSenderLabel(params);
-  if (params.isGroup) {
-    // Groups: add sender at message level, not in envelope
-    // Envelope just has channel
-  } else {
-    // DMs: add sender in envelope
+  if (!params.isGroup) {
     parts.push(senderLabel);
   }
 
-  // Add elapsed time if we have previous timestamp
   if (params.previousTimestamp) {
     const elapsed = formatElapsed(params.timestamp - params.previousTimestamp);
     if (elapsed) {
@@ -117,20 +93,16 @@ export function formatMessageEnvelope(params: EnvelopeParams): string {
     }
   }
 
-  // Add formatted timestamp
   const ts = formatTimestamp(params.timestamp);
   parts.push(ts);
 
-  // Build envelope header
   const header = `[${parts.join(" ")}]`;
 
-  // Strip boundary tags from user content to prevent tag injection, then wrap
   const safeBody = params.body.replace(/<\/?user_message>/gi, "");
   let body = params.isGroup
     ? `${senderLabel}: <user_message>${safeBody}</user_message>`
     : `<user_message>${safeBody}</user_message>`;
 
-  // Add media indicator if present (with message ID for easy download)
   if (params.hasMedia && params.mediaType) {
     const mediaEmoji =
       {
@@ -148,10 +120,6 @@ export function formatMessageEnvelope(params: EnvelopeParams): string {
   return `${header} ${body}`;
 }
 
-/**
- * Format message envelope with simplified format
- * For when full OpenClaw style is too verbose
- */
 export function formatMessageEnvelopeSimple(params: {
   senderId?: string;
   senderName?: string;

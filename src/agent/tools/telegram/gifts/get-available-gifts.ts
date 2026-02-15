@@ -59,7 +59,6 @@ export const telegramGetAvailableGiftsExecutor: ToolExecutor<GetAvailableGiftsPa
       };
     }
 
-    // Process and categorize gifts
     let gifts = (result.gifts || []).map((gift: any) => {
       const isLimited = gift.limited || false;
       const soldOut = gift.soldOut || false;
@@ -80,19 +79,16 @@ export const telegramGetAvailableGiftsExecutor: ToolExecutor<GetAvailableGiftsPa
       };
     });
 
-    // Apply filters
     if (filter === "limited") {
       gifts = gifts.filter((g: any) => g.isLimited);
     } else if (filter === "unlimited") {
       gifts = gifts.filter((g: any) => !g.isLimited);
     }
 
-    // Filter out sold out unless requested
     if (!includesSoldOut) {
       gifts = gifts.filter((g: any) => !g.soldOut);
     }
 
-    // Separate and count
     const limited = gifts.filter((g: any) => g.isLimited);
     const unlimited = gifts.filter((g: any) => !g.isLimited);
 

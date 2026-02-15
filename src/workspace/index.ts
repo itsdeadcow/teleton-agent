@@ -1,6 +1,3 @@
-// src/workspace/index.ts
-
-// Path constants
 export {
   TELETON_ROOT,
   WORKSPACE_ROOT,
@@ -9,7 +6,6 @@ export {
   MAX_FILE_SIZES,
 } from "./paths.js";
 
-// Validation functions
 export {
   WorkspaceSecurityError,
   validatePath,
@@ -23,7 +19,6 @@ export {
   type ValidatedPath,
 } from "./validator.js";
 
-// Re-export manager functions
 export {
   ensureWorkspace,
   isNewWorkspace,

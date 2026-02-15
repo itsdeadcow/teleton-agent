@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { serializeEmbedding } from "../embeddings/index.js";
+import { HYBRID_SEARCH_MIN_SCORE } from "../../constants/limits.js";
 
 export interface HybridSearchResult {
   id: string;
@@ -11,11 +12,9 @@ export interface HybridSearchResult {
 }
 
 /**
- * Escape special characters for FTS5 query
- * FTS5 special chars: " * - + ( ) : ^ ~ . @ # $ % & ! ? [ ] { } | \ / < > = , ; '
+ * Escape FTS5 special characters to prevent syntax errors.
  */
 function escapeFts5Query(query: string): string {
-  // Remove all FTS5 special characters and punctuation that can cause syntax errors
   return query
     .replace(/["\*\-\+\(\)\:\^\~\?\.\@\#\$\%\&\!\[\]\{\}\|\\\/<>=,;'`]/g, " ")
     .replace(/\s+/g, " ")
@@ -23,7 +22,7 @@ function escapeFts5Query(query: string): string {
 }
 
 /**
- * Hybrid search combining vector similarity and BM25 keyword search
+ * Hybrid search combining vector similarity and BM25 keyword search.
  */
 export class HybridSearch {
   constructor(
@@ -31,9 +30,6 @@ export class HybridSearch {
     private vectorEnabled: boolean
   ) {}
 
-  /**
-   * Search in knowledge base
-   */
   async searchKnowledge(
     query: string,
     queryEmbedding: number[],
@@ -47,21 +43,15 @@ export class HybridSearch {
     const vectorWeight = options.vectorWeight ?? 0.7;
     const keywordWeight = options.keywordWeight ?? 0.3;
 
-    // Vector search
     const vectorResults = this.vectorEnabled
-      ? this.vectorSearchKnowledge(queryEmbedding, Math.ceil(limit * 1.5))
+      ? this.vectorSearchKnowledge(queryEmbedding, Math.ceil(limit * 3))
       : [];
 
-    // Keyword search (BM25)
-    const keywordResults = this.keywordSearchKnowledge(query, Math.ceil(limit * 1.5));
+    const keywordResults = this.keywordSearchKnowledge(query, Math.ceil(limit * 3));
 
-    // Merge results
     return this.mergeResults(vectorResults, keywordResults, vectorWeight, keywordWeight, limit);
   }
 
-  /**
-   * Search in Telegram messages
-   */
   async searchMessages(
     query: string,
     queryEmbedding: number[],
@@ -76,19 +66,12 @@ export class HybridSearch {
     const vectorWeight = options.vectorWeight ?? 0.7;
     const keywordWeight = options.keywordWeight ?? 0.3;
 
-    // Vector search
     const vectorResults = this.vectorEnabled
-      ? this.vectorSearchMessages(queryEmbedding, Math.ceil(limit * 1.5), options.chatId)
+      ? this.vectorSearchMessages(queryEmbedding, Math.ceil(limit * 3), options.chatId)
       : [];
 
-    // Keyword search
-    const keywordResults = this.keywordSearchMessages(
-      query,
-      Math.ceil(limit * 1.5),
-      options.chatId
-    );
+    const keywordResults = this.keywordSearchMessages(query, Math.ceil(limit * 3), options.chatId);
 
-    // Merge results
     return this.mergeResults(vectorResults, keywordResults, vectorWeight, keywordWeight, limit);
   }
 
@@ -173,7 +156,6 @@ export class HybridSearch {
     try {
       const embeddingBuffer = serializeEmbedding(embedding);
 
-      // KNN search with k = ? in subquery, then JOIN + optional chatId filter
       const sql = chatId
         ? `
         SELECT mv.id, m.text, m.chat_id as source, mv.distance
@@ -299,12 +281,16 @@ export class HybridSearch {
     }
 
     return Array.from(byId.values())
+      .filter((r) => r.score >= HYBRID_SEARCH_MIN_SCORE)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   }
 
+  /**
+   * Convert BM25 rank to normalized score.
+   * FTS5 rank is negative; more negative = better match.
+   */
   private bm25ToScore(rank: number): number {
-    // Convert BM25 rank to 0-1 score
-    return 1 / (1 + Math.abs(rank));
+    return 1 / (1 + Math.exp(rank));
   }
 }

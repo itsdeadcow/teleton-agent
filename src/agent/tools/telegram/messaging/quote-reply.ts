@@ -1,7 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
-import { Api } from "telegram";
-import bigInt from "big-integer";
+import { Api, helpers } from "telegram";
 import { TELEGRAM_MAX_MESSAGE_LENGTH } from "../../../../constants/limits.js";
 
 /**
@@ -74,7 +73,7 @@ export const telegramQuoteReplyExecutor: ToolExecutor<QuoteReplyParams> = async 
         peer: peer,
         message: text,
         replyTo: replyTo,
-        randomId: bigInt(Date.now().toString() + Math.floor(Math.random() * 1000)),
+        randomId: helpers.generateRandomBigInt(),
       })
     );
 

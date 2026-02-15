@@ -56,16 +56,13 @@ export const telegramSetGiftStatusExecutor: ToolExecutor<SetGiftStatusParams> = 
     let emojiStatus: Api.TypeEmojiStatus;
 
     if (clear || !collectibleId) {
-      // Clear the emoji status
       emojiStatus = new Api.EmojiStatusEmpty();
     } else {
-      // Set collectible as emoji status
       emojiStatus = new Api.InputEmojiStatusCollectible({
         collectibleId: bigInt(collectibleId),
       });
     }
 
-    // Update emoji status
     await gramJsClient.invoke(
       new Api.account.UpdateEmojiStatus({
         emojiStatus,

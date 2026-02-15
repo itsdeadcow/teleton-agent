@@ -1,17 +1,9 @@
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { tonapiFetch } from "../../../constants/api-endpoints.js";
-
-/**
- * Parameters for dns_resolve tool
- */
 interface DnsResolveParams {
   domain: string;
 }
-
-/**
- * Tool definition for dns_resolve
- */
 export const dnsResolveTool: Tool = {
   name: "dns_resolve",
   description:
@@ -22,10 +14,6 @@ export const dnsResolveTool: Tool = {
     }),
   }),
 };
-
-/**
- * Executor for dns_resolve tool
- */
 export const dnsResolveExecutor: ToolExecutor<DnsResolveParams> = async (
   params,
   context

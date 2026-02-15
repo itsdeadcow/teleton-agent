@@ -1,12 +1,6 @@
-/**
- * Transaction formatting utilities shared between the ton_get_transactions
- * tool and the Plugin SDK's sdk.ton.getTransactions().
- */
-
 import { fromNano } from "@ton/ton";
 import type { Transaction } from "@ton/ton";
 
-/** TON transaction type */
 export type TransactionType =
   | "ton_received"
   | "ton_sent"
@@ -19,7 +13,6 @@ export type TransactionType =
   | "contract_call"
   | "multi_send";
 
-// Known op codes for message body parsing
 const OP_CODES = {
   COMMENT: 0x0,
   JETTON_TRANSFER: 0xf8a7ea5,
@@ -32,9 +25,6 @@ const OP_CODES = {
   BOUNCE: 0xffffffff,
 };
 
-/**
- * Parse a TON message body to extract op code and data.
- */
 export function parseMessageBody(
   body: any
 ): { op: number; comment?: string; jettonAmount?: string; nftAddress?: string } | null {
@@ -45,12 +35,10 @@ export function parseMessageBody(
 
     const op = slice.loadUint(32);
 
-    // Simple comment (op = 0)
     if (op === OP_CODES.COMMENT && slice.remainingBits > 0) {
       return { op, comment: slice.loadStringTail() };
     }
 
-    // Jetton transfer notification (received jettons)
     if (op === OP_CODES.JETTON_TRANSFER_NOTIFICATION) {
       const _queryId = slice.loadUint(64);
       const amount = slice.loadCoins();
@@ -58,7 +46,6 @@ export function parseMessageBody(
       return { op, jettonAmount: amount.toString() };
     }
 
-    // Jetton transfer (sending jettons)
     if (op === OP_CODES.JETTON_TRANSFER) {
       const _queryId = slice.loadUint(64);
       const amount = slice.loadCoins();
@@ -66,14 +53,12 @@ export function parseMessageBody(
       return { op, jettonAmount: amount.toString() };
     }
 
-    // NFT ownership assigned (received NFT)
     if (op === OP_CODES.NFT_OWNERSHIP_ASSIGNED) {
       const _queryId = slice.loadUint(64);
       const _prevOwner = slice.loadAddress();
       return { op };
     }
 
-    // NFT transfer (sending NFT)
     if (op === OP_CODES.NFT_TRANSFER) {
       const _queryId = slice.loadUint(64);
       const newOwner = slice.loadAddress();

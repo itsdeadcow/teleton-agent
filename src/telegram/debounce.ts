@@ -2,32 +2,17 @@ import type { TelegramMessage } from "./bridge.js";
 import { DEBOUNCE_MAX_MULTIPLIER, DEBOUNCE_MAX_BUFFER_SIZE } from "../constants/limits.js";
 import { verbose } from "../utils/logger.js";
 
-/**
- * Buffer for accumulating messages during debounce window
- */
 interface DebounceBuffer {
   messages: TelegramMessage[];
   timer: NodeJS.Timeout | null;
 }
 
-/**
- * Debouncer configuration
- */
 interface DebounceConfig {
-  debounceMs: number; // Initial debounce window
-  maxDebounceMs?: number; // Maximum debounce window (for adaptive mode)
-  maxBufferSize?: number; // Force flush after N messages
+  debounceMs: number;
+  maxDebounceMs?: number;
+  maxBufferSize?: number;
 }
 
-/**
- * Message debouncer for batching rapid messages in group chats
- * Implements OpenClaw-style debouncing pattern with adaptive window
- *
- * Features:
- * - Adaptive debouncing: extends window if messages keep arriving
- * - Max buffer size: forces flush after N messages
- * - Max wait time: forces flush after maxDebounceMs regardless
- */
 export class MessageDebouncer {
   private buffers: Map<string, DebounceBuffer> = new Map();
   private readonly maxDebounceMs: number;
@@ -43,9 +28,6 @@ export class MessageDebouncer {
     this.maxBufferSize = config.maxBufferSize ?? DEBOUNCE_MAX_BUFFER_SIZE;
   }
 
-  /**
-   * Enqueue a message for processing (with debouncing if applicable)
-   */
   async enqueue(message: TelegramMessage): Promise<void> {
     const isGroup = message.isGroup ? "group" : "dm";
     const shouldDebounce = this.config.debounceMs > 0 && this.shouldDebounce(message);
@@ -54,15 +36,12 @@ export class MessageDebouncer {
       `📩 [Debouncer] Received ${isGroup} message from ${message.senderId} in ${message.chatId} (debounce: ${shouldDebounce})`
     );
 
-    // Bypass debounce if disabled or shouldDebounce returns false
     if (!shouldDebounce) {
-      // Flush any pending messages for this chat first
       const key = message.chatId;
       if (this.buffers.has(key)) {
         verbose(`📤 [Debouncer] Flushing pending buffer for ${key} before immediate processing`);
         await this.flushKey(key);
       }
-      // Process immediately
       verbose(`⚡ [Debouncer] Processing immediately (no debounce)`);
       await this.processMessages([message]);
       return;
@@ -72,14 +51,12 @@ export class MessageDebouncer {
     const existing = this.buffers.get(key);
 
     if (existing) {
-      // Add to existing buffer and reset timer
       existing.messages.push(message);
       verbose(
         `📥 [Debouncer] Added to buffer for ${key} (${existing.messages.length} messages waiting)`
       );
       this.resetTimer(key, existing);
     } else {
-      // Create new buffer
       const buffer: DebounceBuffer = {
         messages: [message],
         timer: null,
@@ -89,9 +66,6 @@ export class MessageDebouncer {
     }
   }
 
-  /**
-   * Reset debounce timer for a chat
-   */
   private resetTimer(key: string, buffer: DebounceBuffer): void {
     if (buffer.timer) {
       clearTimeout(buffer.timer);
@@ -104,13 +78,9 @@ export class MessageDebouncer {
       });
     }, this.config.debounceMs);
 
-    // Allow Node.js to exit even if timer is pending
     buffer.timer.unref?.();
   }
 
-  /**
-   * Flush buffered messages for a specific chat
-   */
   private async flushKey(key: string): Promise<void> {
     const buffer = this.buffers.get(key);
     if (!buffer) {
@@ -134,11 +104,7 @@ export class MessageDebouncer {
     await this.processMessages(buffer.messages);
   }
 
-  /**
-   * Process a batch of messages (sort by timestamp and call onFlush)
-   */
   private async processMessages(messages: TelegramMessage[]): Promise<void> {
-    // Sort by timestamp to preserve message order
     const sorted = messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
     verbose(`🔄 [Debouncer] Processing ${sorted.length} message(s)`);
@@ -150,16 +116,10 @@ export class MessageDebouncer {
     }
   }
 
-  /**
-   * Get current buffer depth for a chat (for debugging/monitoring)
-   */
   getBufferDepth(chatId: string): number {
     return this.buffers.get(chatId)?.messages.length ?? 0;
   }
 
-  /**
-   * Flush all pending buffers (for graceful shutdown)
-   */
   async flushAll(): Promise<void> {
     const keys = Array.from(this.buffers.keys());
     for (const key of keys) {

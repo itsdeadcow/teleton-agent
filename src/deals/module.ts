@@ -1,8 +1,3 @@
-/**
- * Deals plugin module — wraps deal tools + DealBot lifecycle into a self-contained module.
- * Uses its own deals.db (fully isolated from main memory.db).
- */
-
 import type { PluginModule } from "../agent/tools/types.js";
 import { initDealsConfig, DEALS_CONFIG } from "./config.js";
 import { DealBot, VerificationPoller } from "../bot/index.js";
@@ -63,7 +58,6 @@ const dealsModule: PluginModule = {
   async start(context) {
     if (!context.config.deals?.enabled) return;
 
-    // Open deals database
     const dealsDb = openDealsDb();
 
     const { config, bridge } = context;

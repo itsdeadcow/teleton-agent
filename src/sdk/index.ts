@@ -1,20 +1,11 @@
-/**
- * Tonnet Plugin SDK — factory and version.
- *
- * Creates fully-featured SDK instances for external plugins.
- * Internal services are accessed lazily — the bridge may not be connected
- * when the SDK is created, but it will be by the time any tool executor runs.
- *
- * @module @tonnet/sdk
- */
-
 import type { TelegramBridge } from "../telegram/bridge.js";
 import type Database from "better-sqlite3";
-import type { PluginSDK, PluginLogger } from "./types.js";
+import type { PluginSDK, PluginLogger } from "@teleton-agent/sdk";
+import { SDK_VERSION } from "@teleton-agent/sdk";
 import { createTonSDK } from "./ton.js";
 import { createTelegramSDK } from "./telegram.js";
 
-// Re-export public types for plugin authors
+// Re-export everything from @teleton-agent/sdk for internal consumers
 export type {
   PluginSDK,
   TonSDK,
@@ -24,6 +15,7 @@ export type {
   TonPrice,
   TonSendResult,
   TonTransaction,
+  TransactionType,
   SDKVerifyPaymentParams,
   SDKPaymentVerification,
   DiceResult,
@@ -31,20 +23,19 @@ export type {
   SimpleMessage,
   SendMessageOptions,
   EditMessageOptions,
-} from "./types.js";
+  SimpleToolDef,
+  PluginManifest,
+  ToolResult,
+  ToolScope,
+  ToolCategory,
+} from "@teleton-agent/sdk";
 
-export { PluginSDKError, type SDKErrorCode } from "./errors.js";
+export { PluginSDKError, type SDKErrorCode, SDK_VERSION } from "@teleton-agent/sdk";
 
-/** Current SDK version — bumped on breaking or feature changes */
-export const SDK_VERSION = "1.0.0";
-
-/** Dependencies injected into the SDK factory (from the core app) */
 export interface SDKDependencies {
-  /** Telegram bridge reference (may not be connected yet at creation time) */
   bridge: TelegramBridge;
 }
 
-/** Per-plugin options for SDK creation */
 export interface CreatePluginSDKOptions {
   pluginName: string;
   db: Database.Database | null;
@@ -52,17 +43,9 @@ export interface CreatePluginSDKOptions {
   pluginConfig: Record<string, unknown>;
 }
 
-/**
- * Create a complete PluginSDK instance for a plugin.
- *
- * The returned SDK captures a lazy reference to the bridge.
- * Methods that require the bridge check `bridge.isAvailable()` at
- * call time, not at creation time.
- */
 export function createPluginSDK(deps: SDKDependencies, opts: CreatePluginSDKOptions): PluginSDK {
   const log = createLogger(opts.pluginName);
 
-  // Deep freeze: freeze all nested objects to prevent mutation
   const ton = Object.freeze(createTonSDK(log, opts.db));
   const telegram = Object.freeze(createTelegramSDK(deps.bridge, log));
   const frozenLog = Object.freeze(log);
@@ -80,9 +63,6 @@ export function createPluginSDK(deps: SDKDependencies, opts: CreatePluginSDKOpti
   });
 }
 
-/**
- * Create a prefixed logger for a plugin.
- */
 function createLogger(pluginName: string): PluginLogger {
   const prefix = `[${pluginName}]`;
   return {
@@ -96,8 +76,6 @@ function createLogger(pluginName: string): PluginLogger {
     },
   };
 }
-
-// ─── Semver Utilities ────────────────────────────────────────────
 
 interface SemVer {
   major: number;
@@ -121,10 +99,6 @@ function semverGte(a: SemVer, b: SemVer): boolean {
   return a.patch >= b.patch;
 }
 
-/**
- * Minimal semver range check.
- * Supports: ">=1.0.0", "^1.0.0", exact "1.0.0"
- */
 export function semverSatisfies(current: string, range: string): boolean {
   const cur = parseSemver(current);
   if (!cur) {
@@ -132,7 +106,6 @@ export function semverSatisfies(current: string, range: string): boolean {
     return true;
   }
 
-  // >=X.Y.Z
   if (range.startsWith(">=")) {
     const req = parseSemver(range.slice(2));
     if (!req) {
@@ -142,7 +115,6 @@ export function semverSatisfies(current: string, range: string): boolean {
     return semverGte(cur, req);
   }
 
-  // ^X.Y.Z — compatible: same major (1.x+), or same minor (0.x)
   if (range.startsWith("^")) {
     const req = parseSemver(range.slice(1));
     if (!req) {
@@ -150,13 +122,11 @@ export function semverSatisfies(current: string, range: string): boolean {
       return true;
     }
     if (req.major === 0) {
-      // ^0.Y.Z locks minor: >=0.Y.Z <0.(Y+1).0
       return cur.major === 0 && cur.minor === req.minor && semverGte(cur, req);
     }
     return cur.major === req.major && semverGte(cur, req);
   }
 
-  // Exact match
   const req = parseSemver(range);
   if (!req) {
     console.warn(`⚠️  [SDK] Malformed sdkVersion "${range}", skipping check`);

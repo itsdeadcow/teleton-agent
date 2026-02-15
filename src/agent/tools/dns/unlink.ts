@@ -14,17 +14,9 @@ const DNS_CHANGE_RECORD_OP = 0x4eb1f0f9;
 const WALLET_RECORD_KEY = BigInt(
   "0xe8d44050873dba865aa7c170ab4cce64d90839a34dcfd6cf71d14e0205443b1b"
 );
-
-/**
- * Parameters for dns_unlink tool
- */
 interface DnsUnlinkParams {
   domain: string;
 }
-
-/**
- * Tool definition for dns_unlink
- */
 export const dnsUnlinkTool: Tool = {
   name: "dns_unlink",
   description:
@@ -35,10 +27,6 @@ export const dnsUnlinkTool: Tool = {
     }),
   }),
 };
-
-/**
- * Executor for dns_unlink tool
- */
 export const dnsUnlinkExecutor: ToolExecutor<DnsUnlinkParams> = async (
   params,
   context
@@ -50,7 +38,6 @@ export const dnsUnlinkExecutor: ToolExecutor<DnsUnlinkParams> = async (
     domain = domain.toLowerCase().replace(/\.ton$/, "");
     const fullDomain = `${domain}.ton`;
 
-    // Load wallet
     const walletData = loadWallet();
     if (!walletData) {
       return {
@@ -107,21 +94,17 @@ export const dnsUnlinkExecutor: ToolExecutor<DnsUnlinkParams> = async (
       };
     }
 
-    // Convert mnemonic to private key
     const keyPair = await mnemonicToPrivateKey(walletData.mnemonic);
 
-    // Create wallet contract
     const wallet = WalletContractV5R1.create({
       workchain: 0,
       publicKey: keyPair.publicKey,
     });
 
-    // Get decentralized endpoint
     const endpoint = await getCachedHttpEndpoint();
     const client = new TonClient({ endpoint });
     const contract = client.open(wallet);
 
-    // Get current seqno
     const seqno = await contract.getSeqno();
 
     // Build change_dns_record message body WITHOUT value cell (triggers deletion)

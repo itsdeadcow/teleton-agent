@@ -43,7 +43,7 @@ export const TelegramConfigSchema = z.object({
   api_id: z.number(),
   api_hash: z.string(),
   phone: z.string(),
-  session_name: z.string().default("tonnet_session"),
+  session_name: z.string().default("teleton_session"),
   session_path: z.string().default("~/.teleton"),
   dm_policy: DMPolicy.default("pairing"),
   allow_from: z.array(z.number()).default([]),
@@ -63,12 +63,14 @@ export const TelegramConfigSchema = z.object({
     .number()
     .default(1500)
     .describe("Debounce delay in milliseconds for group messages (0 = disabled)"),
-  // Bot for inline deal confirmations (required for deals system)
   bot_token: z
     .string()
     .optional()
     .describe("Telegram Bot token from @BotFather for inline deal buttons"),
-  bot_username: z.string().optional().describe("Bot username without @ (e.g., 'tonnet_deals_bot')"),
+  bot_username: z
+    .string()
+    .optional()
+    .describe("Bot username without @ (e.g., 'teleton_deals_bot')"),
 });
 
 export const StorageConfigSchema = z.object({
@@ -105,6 +107,32 @@ export const MarketConfigSchema = z
   })
   .default({});
 
+export const WebUIConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false).describe("Enable WebUI server"),
+    port: z.number().default(7777).describe("HTTP server port"),
+    host: z.string().default("127.0.0.1").describe("Bind address (localhost only for security)"),
+    auth_token: z
+      .string()
+      .optional()
+      .describe("Bearer token for API auth (auto-generated if omitted)"),
+    cors_origins: z
+      .array(z.string())
+      .default(["http://localhost:5173", "http://localhost:7777"])
+      .describe("Allowed CORS origins for development"),
+    log_requests: z.boolean().default(false).describe("Log all HTTP requests"),
+  })
+  .default({});
+
+export const DevConfigSchema = z
+  .object({
+    hot_reload: z
+      .boolean()
+      .default(false)
+      .describe("Enable plugin hot-reload (watches ~/.teleton/plugins/ for changes)"),
+  })
+  .default({});
+
 export const ConfigSchema = z.object({
   meta: MetaConfigSchema.default({}),
   agent: AgentConfigSchema,
@@ -112,6 +140,8 @@ export const ConfigSchema = z.object({
   storage: StorageConfigSchema.default({}),
   deals: DealsConfigSchema,
   market: MarketConfigSchema,
+  webui: WebUIConfigSchema,
+  dev: DevConfigSchema,
   plugins: z
     .record(z.string(), z.unknown())
     .default({})
@@ -129,3 +159,5 @@ export type StorageConfig = z.infer<typeof StorageConfigSchema>;
 export type SessionResetPolicy = z.infer<typeof SessionResetPolicySchema>;
 export type DealsConfig = z.infer<typeof DealsConfigSchema>;
 export type MarketConfig = z.infer<typeof MarketConfigSchema>;
+export type WebUIConfig = z.infer<typeof WebUIConfigSchema>;
+export type DevConfig = z.infer<typeof DevConfigSchema>;

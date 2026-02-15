@@ -13,25 +13,17 @@ export interface TelegramUser {
   messageCount: number;
 }
 
-/**
- * Manage Telegram users
- */
 export class UserStore {
   constructor(private db: Database.Database) {}
 
-  /**
-   * Create or update a user
-   */
   upsertUser(user: Partial<TelegramUser> & { id: string }): void {
     const now = Math.floor(Date.now() / 1000);
 
-    // Check if user exists
     const existing = this.db.prepare(`SELECT id FROM tg_users WHERE id = ?`).get(user.id) as
       | { id: string }
       | undefined;
 
     if (existing) {
-      // Update existing user
       this.db
         .prepare(
           `
@@ -46,7 +38,6 @@ export class UserStore {
         )
         .run(user.username ?? null, user.firstName ?? null, user.lastName ?? null, now, user.id);
     } else {
-      // Insert new user
       this.db
         .prepare(
           `
@@ -72,9 +63,6 @@ export class UserStore {
     }
   }
 
-  /**
-   * Get a user by ID
-   */
   getUser(id: string): TelegramUser | undefined {
     const row = this.db.prepare(`SELECT * FROM tg_users WHERE id = ?`).get(id) as any;
 
@@ -94,9 +82,6 @@ export class UserStore {
     };
   }
 
-  /**
-   * Get a user by username
-   */
   getUserByUsername(username: string): TelegramUser | undefined {
     const row = this.db
       .prepare(`SELECT * FROM tg_users WHERE username = ?`)
@@ -118,9 +103,6 @@ export class UserStore {
     };
   }
 
-  /**
-   * Update last seen timestamp
-   */
   updateLastSeen(userId: string): void {
     this.db
       .prepare(
@@ -133,9 +115,6 @@ export class UserStore {
       .run(userId);
   }
 
-  /**
-   * Increment message count
-   */
   incrementMessageCount(userId: string): void {
     this.db
       .prepare(
@@ -148,9 +127,6 @@ export class UserStore {
       .run(userId);
   }
 
-  /**
-   * Set admin status
-   */
   setAdmin(userId: string, isAdmin: boolean): void {
     this.db
       .prepare(
@@ -163,9 +139,6 @@ export class UserStore {
       .run(isAdmin ? 1 : 0, userId);
   }
 
-  /**
-   * Set allowed status
-   */
   setAllowed(userId: string, isAllowed: boolean): void {
     this.db
       .prepare(
@@ -178,9 +151,6 @@ export class UserStore {
       .run(isAllowed ? 1 : 0, userId);
   }
 
-  /**
-   * Get all admins
-   */
   getAdmins(): TelegramUser[] {
     const rows = this.db
       .prepare(
@@ -206,9 +176,6 @@ export class UserStore {
     }));
   }
 
-  /**
-   * Get recently active users
-   */
   getRecentUsers(limit: number = 50): TelegramUser[] {
     const rows = this.db
       .prepare(

@@ -1,11 +1,3 @@
-/**
- * TON payment verification system.
- * Prevents replay attacks by tracking used transactions.
- * Requires memo with user identifier for security.
- *
- * Used by: deals system (built-in), SDK verifyPayment() for plugins.
- */
-
 import type Database from "better-sqlite3";
 import { TonClient, fromNano } from "@ton/ton";
 import { Address } from "@ton/core";
@@ -13,15 +5,10 @@ import { getCachedHttpEndpoint } from "./endpoint.js";
 import { withBlockchainRetry } from "../utils/retry.js";
 import { PAYMENT_TOLERANCE_RATIO } from "../constants/limits.js";
 
-/** Default max payment age in minutes */
 const DEFAULT_MAX_PAYMENT_AGE_MINUTES = 10;
 
-// Op code for simple text comment
 const OP_COMMENT = 0x0;
 
-/**
- * Parse comment from transaction body
- */
 function parseComment(body: any): string | null {
   if (!body) return null;
   try {
@@ -30,7 +17,6 @@ function parseComment(body: any): string | null {
 
     const op = slice.loadUint(32);
 
-    // Simple comment (op = 0)
     if (op === OP_COMMENT && slice.remainingBits > 0) {
       return slice.loadStringTail();
     }
@@ -41,9 +27,6 @@ function parseComment(body: any): string | null {
   }
 }
 
-/**
- * Check if a memo matches the expected identifier (case-insensitive, strips @)
- */
 export function verifyMemo(memo: string | null, identifier: string): boolean {
   if (!memo) return false;
   const cleanMemo = memo.trim().toLowerCase().replace(/^@/, "");
@@ -67,16 +50,9 @@ export interface VerifyPaymentParams {
   requestTime: number;
   gameType: string;
   userId: string;
-  /** Max age of valid payments in minutes (default: 10) */
   maxPaymentAgeMinutes?: number;
 }
 
-/**
- * Verify that a TON payment was received with proper timestamp
- * validation and replay attack prevention.
- *
- * Fetches transactions directly from blockchain via @ton/ton.
- */
 export async function verifyPayment(
   db: Database.Database,
   params: VerifyPaymentParams

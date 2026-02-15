@@ -7,10 +7,6 @@ import { Type } from "@sinclair/typebox";
 import { Api } from "telegram";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
 
-// ============================================
-// PIN MESSAGE
-// ============================================
-
 interface PinMessageParams {
   chat_id: string;
   message_id: number;
@@ -76,10 +72,6 @@ export const telegramPinMessageExecutor: ToolExecutor<PinMessageParams> = async 
     };
   }
 };
-
-// ============================================
-// UNPIN MESSAGE
-// ============================================
 
 interface UnpinMessageParams {
   chat_id: string;

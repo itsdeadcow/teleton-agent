@@ -14,15 +14,9 @@ export interface TelegramChat {
   updatedAt: Date;
 }
 
-/**
- * Manage Telegram chats (DMs, groups, channels)
- */
 export class ChatStore {
   constructor(private db: Database.Database) {}
 
-  /**
-   * Create or update a chat
-   */
   upsertChat(chat: Partial<TelegramChat> & { id: string; type: string }): void {
     const now = Math.floor(Date.now() / 1000);
 
@@ -58,9 +52,6 @@ export class ChatStore {
       );
   }
 
-  /**
-   * Get a chat by ID
-   */
   getChat(id: string): TelegramChat | undefined {
     const row = this.db
       .prepare(
@@ -87,9 +78,6 @@ export class ChatStore {
     };
   }
 
-  /**
-   * Get active (monitored, non-archived) chats
-   */
   getActiveChats(limit: number = 50): TelegramChat[] {
     const rows = this.db
       .prepare(
@@ -117,9 +105,6 @@ export class ChatStore {
     }));
   }
 
-  /**
-   * Update last message info
-   */
   updateLastMessage(chatId: string, messageId: string, timestamp: Date): void {
     this.db
       .prepare(
@@ -132,9 +117,6 @@ export class ChatStore {
       .run(messageId, Math.floor(timestamp.getTime() / 1000), chatId);
   }
 
-  /**
-   * Archive a chat
-   */
   archiveChat(chatId: string): void {
     this.db
       .prepare(
@@ -147,9 +129,6 @@ export class ChatStore {
       .run(chatId);
   }
 
-  /**
-   * Unarchive a chat
-   */
   unarchiveChat(chatId: string): void {
     this.db
       .prepare(
@@ -162,9 +141,6 @@ export class ChatStore {
       .run(chatId);
   }
 
-  /**
-   * Set monitoring status
-   */
   setMonitored(chatId: string, monitored: boolean): void {
     this.db
       .prepare(

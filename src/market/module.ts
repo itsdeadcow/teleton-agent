@@ -1,8 +1,3 @@
-/**
- * Market plugin module — wraps gift floor-price tools into a self-contained module.
- * MarketPriceService manages its own market.db, so no migrate() is needed here.
- */
-
 import type { PluginModule } from "../agent/tools/types.js";
 import { MarketPriceService } from "./price-service.js";
 import {

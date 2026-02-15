@@ -1,7 +1,3 @@
-/**
- * Teleton CLI Entry Point
- */
-
 import { Command } from "commander";
 import { onboardCommand } from "./commands/onboard.js";
 import { doctorCommand } from "./commands/doctor.js";
@@ -11,7 +7,6 @@ import { readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-// Resolve package.json by walking up from current file
 function findPackageJson(): Record<string, unknown> {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 10; i++) {
@@ -36,13 +31,13 @@ program
 program
   .command("setup")
   .description("Interactive wizard to set up Teleton")
-  .option("--workspace <dir>", "Workspace directory (default: ~/.teleton)")
-  .option("--non-interactive", "Non-interactive mode (requires all options)")
+  .option("--workspace <dir>", "Workspace directory")
+  .option("--non-interactive", "Non-interactive mode")
   .option("--api-id <id>", "Telegram API ID")
   .option("--api-hash <hash>", "Telegram API Hash")
-  .option("--phone <number>", "Phone number (international format)")
+  .option("--phone <number>", "Phone number")
   .option("--api-key <key>", "Anthropic API key")
-  .option("--user-id <id>", "Your Telegram User ID (for admin)")
+  .option("--user-id <id>", "Telegram User ID")
   .action(async (options) => {
     try {
       await onboardCommand({
@@ -65,6 +60,8 @@ program
   .command("start")
   .description("Start the Teleton agent")
   .option("-c, --config <path>", "Config file path", getDefaultConfigPath())
+  .option("--webui", "Enable WebUI server (overrides config)")
+  .option("--webui-port <port>", "WebUI server port (default: 7777)")
   .action(async (options) => {
     try {
       // Check if config exists
@@ -75,6 +72,14 @@ program
         process.exit(1);
       }
 
+      // Set environment variables for WebUI flags (will be picked up by config loader)
+      if (options.webui) {
+        process.env.TELETON_WEBUI_ENABLED = "true";
+      }
+      if (options.webuiPort) {
+        process.env.TELETON_WEBUI_PORT = options.webuiPort;
+      }
+
       await startApp(options.config);
     } catch (error) {
       console.error("Error:", error instanceof Error ? error.message : String(error));
@@ -82,7 +87,6 @@ program
     }
   });
 
-// Doctor command
 program
   .command("doctor")
   .description("Run system health checks")
@@ -95,10 +99,8 @@ program
     }
   });
 
-// Default command (show help)
 program.action(() => {
   program.help();
 });
 
-// Parse arguments
 program.parse(process.argv);

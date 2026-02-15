@@ -8,10 +8,6 @@ import { getCachedHttpEndpoint } from "../../../ton/endpoint.js";
 import { Factory, Asset, PoolType, ReadinessStatus, JettonRoot, VaultJetton } from "@dedust/sdk";
 import { DEDUST_FACTORY_MAINNET, DEDUST_GAS, NATIVE_TON_ADDRESS } from "./constants.js";
 import { getDecimals, toUnits, fromUnits } from "./asset-cache.js";
-
-/**
- * Parameters for dedust_swap tool
- */
 interface DedustSwapParams {
   from_asset: string;
   to_asset: string;
@@ -19,10 +15,6 @@ interface DedustSwapParams {
   pool_type?: "volatile" | "stable";
   slippage?: number;
 }
-
-/**
- * Tool definition for dedust_swap
- */
 export const dedustSwapTool: Tool = {
   name: "dedust_swap",
   description:
@@ -52,10 +44,6 @@ export const dedustSwapTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for dedust_swap tool
- */
 export const dedustSwapExecutor: ToolExecutor<DedustSwapParams> = async (
   params,
   context
@@ -63,7 +51,6 @@ export const dedustSwapExecutor: ToolExecutor<DedustSwapParams> = async (
   try {
     const { from_asset, to_asset, amount, pool_type = "volatile", slippage = 0.01 } = params;
 
-    // Load wallet
     const walletData = loadWallet();
     if (!walletData) {
       return {
@@ -72,7 +59,6 @@ export const dedustSwapExecutor: ToolExecutor<DedustSwapParams> = async (
       };
     }
 
-    // Normalize asset addresses
     const isTonInput = from_asset.toLowerCase() === "ton";
     const isTonOutput = to_asset.toLowerCase() === "ton";
 
@@ -104,26 +90,20 @@ export const dedustSwapExecutor: ToolExecutor<DedustSwapParams> = async (
       }
     }
 
-    // Initialize TON client
     const endpoint = await getCachedHttpEndpoint();
     const tonClient = new TonClient({ endpoint });
 
-    // Open factory contract
     const factory = tonClient.open(
       Factory.createFromAddress(Address.parse(DEDUST_FACTORY_MAINNET))
     );
 
-    // Build assets (use normalized addresses)
     const fromAssetObj = isTonInput ? Asset.native() : Asset.jetton(Address.parse(fromAssetAddr));
     const toAssetObj = isTonOutput ? Asset.native() : Asset.jetton(Address.parse(toAssetAddr));
 
-    // Get pool type
     const poolTypeEnum = pool_type === "stable" ? PoolType.STABLE : PoolType.VOLATILE;
 
-    // Get pool
     const pool = tonClient.open(await factory.getPool(poolTypeEnum, [fromAssetObj, toAssetObj]));
 
-    // Check pool readiness
     const readinessStatus = await pool.getReadinessStatus();
     if (readinessStatus !== ReadinessStatus.READY) {
       return {
@@ -139,7 +119,6 @@ export const dedustSwapExecutor: ToolExecutor<DedustSwapParams> = async (
     // Convert amount using correct decimals
     const amountIn = toUnits(amount, fromDecimals);
 
-    // Get estimated output
     const { amountOut, tradeFee } = await pool.getEstimatedSwapOut({
       assetIn: fromAssetObj,
       amountIn,
@@ -201,7 +180,6 @@ export const dedustSwapExecutor: ToolExecutor<DedustSwapParams> = async (
         };
       }
 
-      // Get user's jetton wallet
       const jettonRoot = tonClient.open(JettonRoot.createFromAddress(jettonAddress));
       const jettonWallet = tonClient.open(
         await jettonRoot.getWallet(Address.parse(walletData.address))

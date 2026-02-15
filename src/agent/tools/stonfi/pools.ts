@@ -2,18 +2,10 @@ import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { fetchWithTimeout } from "../../../utils/fetch.js";
 import { STONFI_API_BASE_URL } from "../../../constants/api-endpoints.js";
-
-/**
- * Parameters for jetton_pools tool
- */
 interface JettonPoolsParams {
   jetton_address?: string;
   limit?: number;
 }
-
-/**
- * Tool definition for jetton_pools
- */
 export const stonfiPoolsTool: Tool = {
   name: "stonfi_pools",
   description:
@@ -34,10 +26,6 @@ export const stonfiPoolsTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for jetton_pools tool
- */
 export const stonfiPoolsExecutor: ToolExecutor<JettonPoolsParams> = async (
   params,
   context
@@ -120,7 +108,6 @@ export const stonfiPoolsExecutor: ToolExecutor<JettonPoolsParams> = async (
       };
     });
 
-    // Build message
     let message = jetton_address
       ? `Pools for ${jetton_address}:\n\n`
       : `🏊 Top ${formattedPools.length} Pools by Volume:\n\n`;

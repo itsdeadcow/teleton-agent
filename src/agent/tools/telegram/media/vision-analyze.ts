@@ -108,7 +108,6 @@ export const visionAnalyzeExecutor: ToolExecutor<VisionAnalyzeParams> = async (
     let source: string;
 
     if (hasFilePath) {
-      // === LOCAL FILE MODE ===
       console.log(`📷 Reading local image: ${filePath}`);
 
       // Validate workspace path
@@ -148,7 +147,6 @@ export const visionAnalyzeExecutor: ToolExecutor<VisionAnalyzeParams> = async (
       data = readFileSync(validatedPath.absolutePath);
       source = `file:${filePath}`;
     } else {
-      // === TELEGRAM MESSAGE MODE ===
       console.log(`📷 Downloading image from message ${messageId}...`);
 
       // Get underlying GramJS client

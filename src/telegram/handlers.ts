@@ -14,7 +14,7 @@ import {
   telegramReactExecutor,
 } from "../agent/tools/telegram/index.js";
 import type { ToolContext } from "../agent/tools/types.js";
-import { MESSAGE_HANDLER_LOCK_TIMEOUT_MS } from "../constants/timeouts.js";
+import { TELEGRAM_SEND_TOOLS } from "../constants/tools.js";
 import { verbose } from "../utils/logger.js";
 
 export interface MessageContext {
@@ -24,9 +24,6 @@ export interface MessageContext {
   reason?: string;
 }
 
-/**
- * Rate limiter for message sending
- */
 class RateLimiter {
   private messageTimestamps: number[] = [];
   private groupTimestamps: Map<string, number[]> = new Map();
@@ -40,7 +37,6 @@ class RateLimiter {
     const now = Date.now();
     const oneSecondAgo = now - 1000;
 
-    // Clean old timestamps
     this.messageTimestamps = this.messageTimestamps.filter((t) => t > oneSecondAgo);
 
     if (this.messageTimestamps.length >= this.messagesPerSecond) {
@@ -66,7 +62,6 @@ class RateLimiter {
     timestamps.push(now);
     this.groupTimestamps.set(groupId, timestamps);
 
-    // Evict stale group entries (no activity in >1 min)
     if (this.groupTimestamps.size > 100) {
       for (const [id, ts] of this.groupTimestamps) {
         if (ts.length === 0 || ts[ts.length - 1] <= oneMinuteAgo) {
@@ -79,65 +74,37 @@ class RateLimiter {
   }
 }
 
-/**
- * Per-chat lock to prevent concurrent message processing
- * This avoids race conditions where tool_results get orphaned
- *
- * Messages wait for the lock and are processed one by one.
- */
-class ChatLock {
-  private locks: Map<string, { promise: Promise<void>; acquiredAt: number }> = new Map();
-  private readonly LOCK_TIMEOUT_MS = MESSAGE_HANDLER_LOCK_TIMEOUT_MS;
+class ChatQueue {
+  private chains = new Map<string, Promise<void>>();
 
-  async acquire(chatId: string): Promise<() => void> {
-    // Check for existing lock
-    const existing = this.locks.get(chatId);
-    if (existing) {
-      const age = Date.now() - existing.acquiredAt;
+  enqueue(chatId: string, task: () => Promise<void>): Promise<void> {
+    const prev = this.chains.get(chatId) ?? Promise.resolve();
+    const next = prev
+      .then(task, () => task())
+      .finally(() => {
+        // Auto-cleanup: remove entry if this is still the tail of the chain
+        if (this.chains.get(chatId) === next) {
+          this.chains.delete(chatId);
+        }
+      });
 
-      // Force release stale locks (older than timeout)
-      if (age > this.LOCK_TIMEOUT_MS) {
-        console.warn(`⚠️ Stale lock detected for chat ${chatId}, forcing release (age: ${age}ms)`);
-        this.locks.delete(chatId);
-      } else {
-        // Wait for lock with timeout
-        const timeout = this.LOCK_TIMEOUT_MS - age;
-        await Promise.race([
-          existing.promise,
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`Lock timeout for ${chatId}`)), timeout)
-          ),
-        ]).catch((err) => {
-          console.error(`Lock wait timeout for ${chatId}:`, err);
-          this.locks.delete(chatId); // Force release on timeout
-        });
-      }
-    }
+    // Register as new tail BEFORE awaiting (atomic in single-threaded JS)
+    this.chains.set(chatId, next);
+    return next;
+  }
 
-    // Create a new lock
-    let release: () => void;
-    const lockPromise = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const lockEntry = {
-      promise: lockPromise,
-      acquiredAt: Date.now(),
-    };
-    this.locks.set(chatId, lockEntry);
+  /**
+   * Wait for all active chains to complete (for graceful shutdown).
+   */
+  async drain(): Promise<void> {
+    await Promise.allSettled([...this.chains.values()]);
+  }
 
-    // Return release function (only releases if we still own the lock)
-    return () => {
-      if (this.locks.get(chatId) === lockEntry) {
-        this.locks.delete(chatId);
-      }
-      release!();
-    };
+  get activeChats(): number {
+    return this.chains.size;
   }
 }
 
-/**
- * Handles incoming Telegram messages and decides when to respond
- */
 export class MessageHandler {
   private bridge: TelegramBridge;
   private config: TelegramConfig;
@@ -152,7 +119,7 @@ export class MessageHandler {
   private pendingHistory: PendingHistory;
   private db: Database.Database;
   private marketService?: any;
-  private chatLock: ChatLock = new ChatLock();
+  private chatQueue: ChatQueue = new ChatQueue();
 
   constructor(
     bridge: TelegramBridge,
@@ -175,32 +142,25 @@ export class MessageHandler {
       config.rate_limit_groups_per_minute
     );
 
-    // Initialize stores
     this.messageStore = new MessageStore(db, embedder, vectorEnabled);
     this.chatStore = new ChatStore(db);
     this.userStore = new UserStore(db);
     this.pendingHistory = new PendingHistory();
 
-    // lastProcessedMessageId is now per-chat, loaded dynamically
     this.lastProcessedMessageId = 0;
-
-    // ownUserId will be set after connection via setOwnUserId()
   }
 
-  /**
-   * Set own user ID after connection
-   */
   setOwnUserId(userId: string | undefined): void {
     this.ownUserId = userId;
   }
 
-  /**
-   * Analyze message context and decide if we should respond
-   */
+  async drain(): Promise<void> {
+    await this.chatQueue.drain();
+  }
+
   analyzeMessage(message: TelegramMessage): MessageContext {
     const isAdmin = this.config.admin_ids.includes(message.senderId);
 
-    // Skip if already processed (based on per-chat offset)
     const chatOffset = readOffset(message.chatId) ?? 0;
     if (message.id <= chatOffset) {
       return {
@@ -211,7 +171,6 @@ export class MessageHandler {
       };
     }
 
-    // Skip messages from bots everywhere (avoid bot-to-bot loops)
     if (message.isBot) {
       return {
         message,
@@ -221,7 +180,6 @@ export class MessageHandler {
       };
     }
 
-    // DM handling
     if (!message.isGroup && !message.isChannel) {
       switch (this.config.dm_policy) {
         case "disabled":
@@ -242,8 +200,6 @@ export class MessageHandler {
           }
           break;
         case "pairing":
-          // Pairing logic would go here
-          // For now, treat like allowlist
           if (!this.config.allow_from.includes(message.senderId) && !isAdmin) {
             return {
               message,
@@ -260,7 +216,6 @@ export class MessageHandler {
       return { message, isAdmin, shouldRespond: true };
     }
 
-    // Group/Channel handling
     if (message.isGroup) {
       switch (this.config.group_policy) {
         case "disabled":
@@ -344,125 +299,107 @@ export class MessageHandler {
       return;
     }
 
-    // ACQUIRE CHAT LOCK - messages wait their turn and are processed one by one
-    const releaseLock = await this.chatLock.acquire(message.chatId);
-
-    try {
-      // Re-check offset after acquiring lock to prevent duplicate processing
-      // (GramJS may fire duplicate NewMessage events during reconnection)
-      const postLockOffset = readOffset(message.chatId) ?? 0;
-      if (message.id <= postLockOffset) {
-        verbose(`Skipping message ${message.id} (already processed after lock)`);
-        return;
-      }
-
-      // 4. Typing simulation if enabled
-      if (this.config.typing_simulation) {
-        await this.bridge.setTyping(message.chatId);
-      }
-
-      // 5. Get pending history for groups (if any)
-      let pendingContext: string | null = null;
-      if (message.isGroup) {
-        pendingContext = this.pendingHistory.getAndClearPending(message.chatId);
-      }
-
-      // 6. Build tool context
-      const toolContext: Omit<ToolContext, "chatId" | "isGroup"> = {
-        bridge: this.bridge,
-        db: this.db,
-        senderId: message.senderId,
-        marketService: this.marketService,
-        config: this.fullConfig,
-      };
-
-      // 7. Get response from agent (with tools)
-      const userName =
-        message.senderFirstName || message.senderUsername || `user:${message.senderId}`;
-      const response = await this.agent.processMessage(
-        message.chatId,
-        message.text,
-        userName,
-        message.timestamp.getTime(),
-        message.isGroup,
-        pendingContext,
-        toolContext,
-        message.senderUsername,
-        message.hasMedia,
-        message.mediaType,
-        message.id
-      );
-
-      // 8. Handle response based on whether tools were used
-      const hasToolCalls = response.toolCalls && response.toolCalls.length > 0;
-
-      // Tools that send content to Telegram - no additional text response needed
-      const telegramSendTools = [
-        "telegram_send_message",
-        "telegram_send_gif",
-        "telegram_send_voice",
-        "telegram_send_sticker",
-        "telegram_send_document",
-        "telegram_send_photo",
-        "telegram_send_video",
-        "telegram_send_poll",
-        "telegram_forward_message",
-        "telegram_reply_message",
-        "deal_propose",
-      ];
-
-      // Check if agent used any Telegram send tool - it already sent the message
-      const telegramSendCalled =
-        hasToolCalls && response.toolCalls?.some((tc) => telegramSendTools.includes(tc.name));
-
-      if (!telegramSendCalled && response.content && response.content.trim().length > 0) {
-        // Agent returned text but didn't use the send tool - send it manually
-        let responseText = response.content;
-
-        // Truncate if needed
-        if (responseText.length > this.config.max_message_length) {
-          responseText = responseText.slice(0, this.config.max_message_length - 3) + "...";
+    // Enqueue for serial processing — messages wait their turn per chat
+    await this.chatQueue.enqueue(message.chatId, async () => {
+      try {
+        // Re-check offset after queue wait to prevent duplicate processing
+        // (GramJS may fire duplicate NewMessage events during reconnection)
+        const postQueueOffset = readOffset(message.chatId) ?? 0;
+        if (message.id <= postQueueOffset) {
+          verbose(`Skipping message ${message.id} (already processed after queue wait)`);
+          return;
         }
 
-        const sentMessage = await this.bridge.sendMessage({
-          chatId: message.chatId,
-          text: responseText,
-          replyToId: message.id,
-        });
+        // 4. Typing simulation if enabled
+        if (this.config.typing_simulation) {
+          await this.bridge.setTyping(message.chatId);
+        }
 
-        // Store agent's response to feed
-        await this.storeTelegramMessage(
-          {
-            id: sentMessage.id,
-            chatId: message.chatId,
-            senderId: this.ownUserId ? parseInt(this.ownUserId) : 0,
-            text: responseText,
-            isGroup: message.isGroup,
-            isChannel: message.isChannel,
-            isBot: false, // Agent is not a bot (user client)
-            mentionsMe: false,
-            timestamp: new Date(sentMessage.date * 1000),
-            hasMedia: false, // Agent responses don't have media
-          },
-          true
+        // 5. Get pending history for groups (if any)
+        let pendingContext: string | null = null;
+        if (message.isGroup) {
+          pendingContext = this.pendingHistory.getAndClearPending(message.chatId);
+        }
+
+        // 6. Build tool context
+        const toolContext: Omit<ToolContext, "chatId" | "isGroup"> = {
+          bridge: this.bridge,
+          db: this.db,
+          senderId: message.senderId,
+          marketService: this.marketService,
+          config: this.fullConfig,
+        };
+
+        // 7. Get response from agent (with tools)
+        const userName =
+          message.senderFirstName || message.senderUsername || `user:${message.senderId}`;
+        const response = await this.agent.processMessage(
+          message.chatId,
+          message.text,
+          userName,
+          message.timestamp.getTime(),
+          message.isGroup,
+          pendingContext,
+          toolContext,
+          message.senderUsername,
+          message.hasMedia,
+          message.mediaType,
+          message.id
         );
+
+        // 8. Handle response based on whether tools were used
+        const hasToolCalls = response.toolCalls && response.toolCalls.length > 0;
+
+        // Check if agent used any Telegram send tool - it already sent the message
+        const telegramSendCalled =
+          hasToolCalls && response.toolCalls?.some((tc) => TELEGRAM_SEND_TOOLS.has(tc.name));
+
+        if (!telegramSendCalled && response.content && response.content.trim().length > 0) {
+          // Agent returned text but didn't use the send tool - send it manually
+          let responseText = response.content;
+
+          // Truncate if needed
+          if (responseText.length > this.config.max_message_length) {
+            responseText = responseText.slice(0, this.config.max_message_length - 3) + "...";
+          }
+
+          const sentMessage = await this.bridge.sendMessage({
+            chatId: message.chatId,
+            text: responseText,
+            replyToId: message.id,
+          });
+
+          // Store agent's response to feed
+          await this.storeTelegramMessage(
+            {
+              id: sentMessage.id,
+              chatId: message.chatId,
+              senderId: this.ownUserId ? parseInt(this.ownUserId) : 0,
+              text: responseText,
+              isGroup: message.isGroup,
+              isChannel: message.isChannel,
+              isBot: false,
+              mentionsMe: false,
+              timestamp: new Date(sentMessage.date * 1000),
+              hasMedia: false,
+            },
+            true
+          );
+        }
+
+        // 9. Clear pending history after responding (for groups)
+        if (message.isGroup) {
+          this.pendingHistory.clearPending(message.chatId);
+        }
+
+        // Mark as processed AFTER successful handling (prevents message loss on crash)
+        writeOffset(message.id, message.chatId);
+
+        verbose(`Processed message ${message.id} in chat ${message.chatId}`);
+      } catch (error) {
+        console.error("Error handling message:", error);
       }
-
-      // 9. Clear pending history after responding (for groups)
-      if (message.isGroup) {
-        this.pendingHistory.clearPending(message.chatId);
-      }
-
-      // Mark as processed AFTER successful handling (prevents message loss on crash)
-      writeOffset(message.id, message.chatId);
-
-      verbose(`Processed message ${message.id} in chat ${message.chatId}`);
-    } catch (error) {
-      console.error("Error handling message:", error);
-    } finally {
-      // RELEASE CHAT LOCK - always release even on error
-      releaseLock();
-    }
+    });
   }
 
   /**

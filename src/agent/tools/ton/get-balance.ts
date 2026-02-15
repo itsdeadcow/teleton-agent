@@ -1,20 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { getWalletAddress, getWalletBalance } from "../../../ton/wallet-service.js";
-
-/**
- * Tool definition for ton_get_balance
- */
 export const tonGetBalanceTool: Tool = {
   name: "ton_get_balance",
   description: "Get your current TON wallet balance. Returns the balance in TON and nanoTON.",
   parameters: Type.Object({}),
   category: "data-bearing",
 };
-
-/**
- * Executor for ton_get_balance tool
- */
 export const tonGetBalanceExecutor: ToolExecutor<{}> = async (
   params,
   context

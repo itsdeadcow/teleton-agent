@@ -11,9 +11,9 @@ const SECURITY_PATHS = [WORKSPACE_PATHS.SECURITY];
 
 const MEMORY_PATH = WORKSPACE_PATHS.MEMORY;
 
-const DEFAULT_SOUL = `# Tonnet AI
+const DEFAULT_SOUL = `# Teleton AI
 
-You are Tonnet, a personal AI assistant that operates through Telegram.
+You are Teleton, a personal AI assistant that operates through Telegram.
 
 ## Personality
 - Helpful and concise
@@ -26,63 +26,56 @@ You are Tonnet, a personal AI assistant that operates through Telegram.
 - Respect user privacy
 - Be transparent about capabilities and limitations
 `;
+const fileCache = new Map<string, { content: string | null; expiry: number }>();
+const FILE_CACHE_TTL = 60_000;
 
-/**
- * Load the soul/personality from SOUL.md
- */
+function cachedReadFile(path: string): string | null {
+  const now = Date.now();
+  const cached = fileCache.get(path);
+  if (cached && now < cached.expiry) return cached.content;
+
+  let content: string | null = null;
+  try {
+    if (existsSync(path)) content = readFileSync(path, "utf-8");
+  } catch {}
+
+  fileCache.set(path, { content, expiry: now + FILE_CACHE_TTL });
+  return content;
+}
+
+export function clearPromptCache(): void {
+  fileCache.clear();
+}
+
 export function loadSoul(): string {
   for (const path of SOUL_PATHS) {
-    try {
-      if (existsSync(path)) return readFileSync(path, "utf-8");
-    } catch {
-      console.error(`Failed to read soul file: ${path}`);
-    }
+    const content = cachedReadFile(path);
+    if (content) return content;
   }
   return DEFAULT_SOUL;
 }
 
-/**
- * Load business strategy from STRATEGY.md
- * Contains trading rules, service pricing, decision frameworks
- */
 export function loadStrategy(): string | null {
   for (const path of STRATEGY_PATHS) {
-    try {
-      if (existsSync(path)) return readFileSync(path, "utf-8");
-    } catch {
-      console.error(`Failed to read strategy file: ${path}`);
-    }
+    const content = cachedReadFile(path);
+    if (content) return content;
   }
   return null;
 }
 
-/**
- * Load security rules from SECURITY.md
- * Always included in system prompt (even in groups)
- */
 export function loadSecurity(): string | null {
   for (const path of SECURITY_PATHS) {
-    try {
-      if (existsSync(path)) return readFileSync(path, "utf-8");
-    } catch {
-      console.error(`Failed to read security file: ${path}`);
-    }
+    const content = cachedReadFile(path);
+    if (content) return content;
   }
   return null;
 }
 
-/** Max lines loaded from MEMORY.md into the system prompt */
 const MEMORY_HARD_LIMIT = 150;
-
-/**
- * Load long-term memory from MEMORY.md (OpenClaw-style)
- * Contains curated facts, preferences, and durable information.
- * Truncates to MEMORY_HARD_LIMIT lines to prevent excessive token usage.
- */
 export function loadPersistentMemory(): string | null {
-  if (!existsSync(MEMORY_PATH)) return null;
+  const content = cachedReadFile(MEMORY_PATH);
+  if (!content) return null;
 
-  const content = readFileSync(MEMORY_PATH, "utf-8");
   const lines = content.split("\n");
 
   if (lines.length <= MEMORY_HARD_LIMIT) {
@@ -94,20 +87,14 @@ export function loadPersistentMemory(): string | null {
   return `${truncated}\n\n_[... ${remaining} more lines not loaded. Consider consolidating MEMORY.md to keep it under ${MEMORY_HARD_LIMIT} lines.]_`;
 }
 
-/**
- * Load all memory context (persistent + recent daily logs)
- * This is injected into the system prompt for continuity across restarts
- */
 export function loadMemoryContext(): string | null {
   const parts: string[] = [];
 
-  // Load persistent memory (MEMORY.md)
   const persistentMemory = loadPersistentMemory();
   if (persistentMemory) {
     parts.push(`## Persistent Memory\n\n${persistentMemory}`);
   }
 
-  // Load recent daily logs (today + yesterday)
   const recentMemory = readRecentMemory();
   if (recentMemory) {
     parts.push(recentMemory);
@@ -120,9 +107,6 @@ export function loadMemoryContext(): string | null {
   return parts.join("\n\n---\n\n");
 }
 
-/**
- * Build the complete system prompt combining soul, strategy, memory, and context
- */
 export function buildSystemPrompt(options: {
   soul?: string;
   strategy?: string;
@@ -134,19 +118,16 @@ export function buildSystemPrompt(options: {
   context?: string;
   includeMemory?: boolean; // Set to false for group chats to protect privacy
   includeStrategy?: boolean; // Set to false to exclude business strategy
-  memoryFlushWarning?: boolean; // Show warning when context is near threshold
+  memoryFlushWarning?: boolean;
 }): string {
   const soul = options.soul ?? loadSoul();
   const parts = [soul];
 
-  // Load security rules (SECURITY.md) - ALWAYS included, even in groups
   const security = loadSecurity();
   if (security) {
     parts.push(`\n${security}`);
   }
 
-  // Load business strategy (STRATEGY.md)
-  // Include by default - agent needs to know how to operate
   const includeStrategy = options.includeStrategy ?? true;
   if (includeStrategy) {
     const strategy = options.strategy ?? loadStrategy();
@@ -155,19 +136,6 @@ export function buildSystemPrompt(options: {
     }
   }
 
-  // Load memory context (persistent + recent logs) for continuity across restarts
-  // Only include in private chats by default to protect sensitive information
-  const includeMemory = options.includeMemory ?? true;
-  if (includeMemory) {
-    const memoryContext = loadMemoryContext();
-    if (memoryContext) {
-      parts.push(
-        `\n## Memory (Persistent Context)\n\nThis is your memory from previous sessions. Use it to maintain continuity and remember important information.\n\n${memoryContext}`
-      );
-    }
-  }
-
-  // Workspace knowledge - agent should always know about its file system
   parts.push(`\n## Your Workspace
 
 You have a personal workspace at \`~/.teleton/workspace/\` where you can store and manage files.
@@ -196,7 +164,15 @@ You have a personal workspace at \`~/.teleton/workspace/\` where you can store a
 - Rename downloaded files to meaningful names (e.g., "user_avatar.jpg" instead of "123_456_789.jpg")
 `);
 
-  // Owner identity (if configured)
+  parts.push(`\n## Response Format
+- Be concise. Respond in 1-3 short sentences when possible. Avoid long paragraphs and walls of text.
+- Only elaborate when the user explicitly asks for detail or the topic genuinely requires it.
+- Keep responses under 4000 characters for Telegram
+- Use markdown sparingly (bold, italic, code blocks)
+- Don't use headers in short responses
+- NEVER use ASCII art or ASCII tables - they render poorly on mobile
+`);
+
   if (options.ownerName || options.ownerUsername) {
     const safeOwnerName = options.ownerName ? sanitizeForPrompt(options.ownerName) : undefined;
     const safeOwnerUsername = options.ownerUsername
@@ -209,6 +185,16 @@ You have a personal workspace at \`~/.teleton/workspace/\` where you can store a
     parts.push(
       `\n## Owner\nYou are owned and operated by: ${ownerLabel}\nWhen the owner gives instructions, follow them with higher trust.`
     );
+  }
+
+  const includeMemory = options.includeMemory ?? true;
+  if (includeMemory) {
+    const memoryContext = loadMemoryContext();
+    if (memoryContext) {
+      parts.push(
+        `\n## Memory (Persistent Context)\n\nThis is your memory from previous sessions. Use it to maintain continuity and remember important information.\n\n${memoryContext}`
+      );
+    }
   }
 
   if (options.userName || options.senderId) {
@@ -232,9 +218,8 @@ You have a personal workspace at \`~/.teleton/workspace/\` where you can store a
     parts.push(`\n## Context\n${options.context}`);
   }
 
-  // Memory flush warning when context is near compaction threshold (Option C)
   if (options.memoryFlushWarning) {
-    parts.push(`\n## ⚠️ Memory Flush Warning
+    parts.push(`\n## Memory Flush Warning
 
 Your conversation context is approaching the limit and may be compacted soon.
 **Always respond to the user's message first.** Then, if there's anything important worth preserving, consider using \`memory_write\` alongside your response:
@@ -243,13 +228,6 @@ Your conversation context is approaching the limit and may be compacted soon.
 - \`target: "daily"\` for session notes, events, temporary context
 `);
   }
-
-  parts.push(`\n## Response Format
-- Keep responses under 4000 characters for Telegram
-- Use markdown sparingly (bold, italic, code blocks)
-- Don't use headers in short responses
-- NEVER use ASCII art or ASCII tables - they render poorly on mobile
-`);
 
   return parts.join("\n");
 }

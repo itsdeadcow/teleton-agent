@@ -19,9 +19,6 @@ export interface SessionEntry {
   timestamp: Date;
 }
 
-/**
- * Manage agent sessions (conversation transcripts)
- */
 export class SessionStore {
   constructor(
     private db: Database.Database,
@@ -29,9 +26,6 @@ export class SessionStore {
     private vectorEnabled: boolean
   ) {}
 
-  /**
-   * Create a new session
-   */
   createSession(chatId?: string): Session {
     const id = randomUUID();
     const now = Math.floor(Date.now() / 1000);
@@ -54,9 +48,6 @@ export class SessionStore {
     };
   }
 
-  /**
-   * End a session with summary
-   */
   endSession(sessionId: string, summary: string, tokensUsed: number = 0): void {
     const now = Math.floor(Date.now() / 1000);
 
@@ -71,9 +62,6 @@ export class SessionStore {
       .run(now, summary, tokensUsed, sessionId);
   }
 
-  /**
-   * Update message count for a session
-   */
   incrementMessageCount(sessionId: string, count: number = 1): void {
     this.db
       .prepare(
@@ -86,9 +74,6 @@ export class SessionStore {
       .run(count, sessionId);
   }
 
-  /**
-   * Get a session by ID
-   */
   getSession(id: string): Session | undefined {
     const row = this.db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) as any;
 
@@ -105,9 +90,6 @@ export class SessionStore {
     };
   }
 
-  /**
-   * Get active (not ended) sessions
-   */
   getActiveSessions(): Session[] {
     const rows = this.db
       .prepare(
@@ -130,9 +112,6 @@ export class SessionStore {
     }));
   }
 
-  /**
-   * Get sessions for a specific chat
-   */
   getSessionsByChat(chatId: string, limit: number = 50): Session[] {
     const rows = this.db
       .prepare(
@@ -157,28 +136,23 @@ export class SessionStore {
   }
 
   /**
-   * Index a session for search (after ending)
-   * This creates a knowledge entry from the session summary
+   * Index a session for search after ending.
+   * Creates a knowledge entry from the session summary for future retrieval.
    */
   async indexSession(sessionId: string): Promise<void> {
     const session = this.getSession(sessionId);
     if (!session || !session.summary) return;
 
     try {
-      // Create knowledge entry
       const knowledgeId = `session:${sessionId}`;
       const text = `Session from ${session.startedAt.toISOString()}:\n${session.summary}`;
-
-      // Compute hash
       const hash = hashText(text);
 
-      // Compute embedding if vector search enabled
       let embedding: number[] | null = null;
       if (this.vectorEnabled) {
         embedding = await this.embedder.embedQuery(text);
       }
 
-      // Store in knowledge table
       this.db
         .prepare(
           `
@@ -192,14 +166,12 @@ export class SessionStore {
         )
         .run(knowledgeId, sessionId, text, hash);
 
-      // Store embedding if available
       if (embedding && this.vectorEnabled) {
         const embeddingBuffer = serializeEmbedding(embedding);
         const rowid = this.db
           .prepare(`SELECT rowid FROM knowledge WHERE id = ?`)
           .get(knowledgeId) as { rowid: number };
 
-        // vec0 virtual tables don't support ON CONFLICT — delete first
         this.db.prepare(`DELETE FROM knowledge_vec WHERE rowid = ?`).run(rowid.rowid);
         this.db
           .prepare(`INSERT INTO knowledge_vec (rowid, embedding) VALUES (?, ?)`)
@@ -212,9 +184,6 @@ export class SessionStore {
     }
   }
 
-  /**
-   * Delete a session
-   */
   deleteSession(sessionId: string): void {
     const knowledgeId = `session:${sessionId}`;
     if (this.vectorEnabled) {

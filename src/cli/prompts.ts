@@ -1,7 +1,3 @@
-/**
- * Wrapper around @clack/prompts for consistent CLI UX
- */
-
 import * as clack from "@clack/prompts";
 import { setTimeout } from "timers/promises";
 
@@ -29,34 +25,18 @@ export interface ConfirmPromptOptions {
   initialValue?: boolean;
 }
 
-/**
- * CLI Prompter using @clack/prompts
- */
 export class ClackPrompter {
-  /**
-   * Display intro banner
-   */
   async intro(title: string): Promise<void> {
     clack.intro(title);
   }
 
-  /**
-   * Display outro message
-   */
   async outro(message: string): Promise<void> {
     clack.outro(message);
   }
 
-  /**
-   * Display note/info
-   */
   async note(message: string, title?: string): Promise<void> {
     clack.note(message, title);
   }
-
-  /**
-   * Text input prompt
-   */
   async text(options: TextPromptOptions): Promise<string> {
     const result = await clack.text({
       message: options.message,
@@ -71,10 +51,6 @@ export class ClackPrompter {
 
     return result as string;
   }
-
-  /**
-   * Password input (hidden)
-   */
   async password(options: {
     message: string;
     validate?: (value: string) => string | undefined;
@@ -90,10 +66,6 @@ export class ClackPrompter {
 
     return result as string;
   }
-
-  /**
-   * Select prompt (single choice)
-   */
   async select<T = string>(options: SelectPromptOptions<T>): Promise<T> {
     const result = await clack.select({
       message: options.message,
@@ -116,10 +88,6 @@ export class ClackPrompter {
 
     return result as T;
   }
-
-  /**
-   * Confirm (yes/no)
-   */
   async confirm(options: ConfirmPromptOptions): Promise<boolean> {
     const result = await clack.confirm({
       message: options.message,
@@ -132,10 +100,6 @@ export class ClackPrompter {
 
     return result as boolean;
   }
-
-  /**
-   * Multi-select prompt
-   */
   async multiselect<T = string>(options: {
     message: string;
     options: SelectOption<T>[];
@@ -162,10 +126,6 @@ export class ClackPrompter {
 
     return result as T[];
   }
-
-  /**
-   * Spinner for long operations
-   */
   spinner(): ClackSpinner {
     const s = clack.spinner();
     return {
@@ -175,30 +135,18 @@ export class ClackPrompter {
     };
   }
 
-  /**
-   * Log message
-   */
   log(message: string): void {
     clack.log.message(message);
   }
 
-  /**
-   * Log warning
-   */
   warn(message: string): void {
     clack.log.warn(message);
   }
 
-  /**
-   * Log error
-   */
   error(message: string): void {
     clack.log.error(message);
   }
 
-  /**
-   * Log success
-   */
   success(message: string): void {
     clack.log.success(message);
   }
@@ -217,9 +165,6 @@ export class CancelledError extends Error {
   }
 }
 
-/**
- * Create a new prompter instance
- */
 export function createPrompter(): ClackPrompter {
   return new ClackPrompter();
 }

@@ -8,9 +8,6 @@ import { encodingForModel } from "js-tiktoken";
 import type { SupportedProvider } from "../config/providers.js";
 import { COMPACTION_MAX_MESSAGES, COMPACTION_KEEP_RECENT } from "../constants/limits.js";
 
-/**
- * Configuration for auto-compaction
- */
 export interface CompactionConfig {
   enabled: boolean;
   maxMessages?: number; // Trigger compaction after N messages
@@ -20,64 +17,44 @@ export interface CompactionConfig {
   softThresholdTokens?: number; // Token count to trigger pre-compaction flush
 }
 
-/**
- * Default compaction configuration (conservative fallback)
- * Runtime dynamically computes from model.contextWindow (see runtime.ts constructor)
- * These defaults are only used if dynamic resolution fails
- */
 export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
   enabled: true,
   maxMessages: COMPACTION_MAX_MESSAGES,
-  maxTokens: 96_000, // Conservative: fits 128K context with buffer
+  maxTokens: 96_000,
   keepRecentMessages: COMPACTION_KEEP_RECENT,
   memoryFlushEnabled: true,
-  softThresholdTokens: 64_000, // ~50% of 128K (smallest supported context)
+  softThresholdTokens: 64_000,
 };
-
-// Cache tokenizer instance (Claude uses cl100k_base encoding)
 let tokenizer: ReturnType<typeof encodingForModel> | null = null;
 
 function getTokenizer() {
   if (!tokenizer) {
-    // Claude models use cl100k_base encoding (same as GPT-4)
     tokenizer = encodingForModel("gpt-4");
   }
   return tokenizer;
 }
 
-/**
- * Accurate token count using tiktoken
- * Claude Opus/Sonnet use cl100k_base encoding
- */
 function estimateTokens(content: string): number {
   try {
     const enc = getTokenizer();
     return enc.encode(content).length;
   } catch (error) {
-    // Fallback to rough estimate if tiktoken fails
     console.warn("Token encoding failed, using fallback:", error);
     return Math.ceil(content.length / 4);
   }
 }
 
-/**
- * Calculate total tokens in context
- */
 function calculateContextTokens(context: Context): number {
   let total = 0;
 
-  // System prompt
   if (context.systemPrompt) {
     total += estimateTokens(context.systemPrompt);
   }
 
-  // Messages
   for (const message of context.messages) {
     if (message.role === "user") {
-      // User content is always a string
       total += estimateTokens(message.content as string);
     } else if (message.role === "assistant") {
-      // Assistant content is an array of blocks
       const content = message.content as Array<{ type: string; text?: string }>;
       for (const block of content) {
         if (block.type === "text" && block.text) {
@@ -90,10 +67,6 @@ function calculateContextTokens(context: Context): number {
   return total;
 }
 
-/**
- * Check if memory flush is needed (soft threshold)
- * Accepts optional pre-computed tokenCount to avoid double calculation
- */
 export function shouldFlushMemory(
   context: Context,
   config: CompactionConfig,
@@ -114,11 +87,8 @@ export function shouldFlushMemory(
   return false;
 }
 
-/**
- * Flush memory to daily log before compaction
- */
 function flushMemoryToDailyLog(context: Context): void {
-  const recentMessages = context.messages.slice(-5); // Last 5 messages
+  const recentMessages = context.messages.slice(-5);
   const summary: string[] = [];
 
   summary.push("**Recent Context:**\n");
@@ -140,10 +110,6 @@ function flushMemoryToDailyLog(context: Context): void {
   console.log(`✅ Memory flushed to daily log`);
 }
 
-/**
- * Check if compaction is needed based on config
- * Accepts optional pre-computed tokenCount to avoid double calculation
- */
 export function shouldCompact(
   context: Context,
   config: CompactionConfig,
@@ -155,13 +121,11 @@ export function shouldCompact(
 
   const messageCount = context.messages.length;
 
-  // Check message count threshold
   if (config.maxMessages && messageCount >= config.maxMessages) {
     console.log(`⚠️  Compaction needed: ${messageCount} messages (max: ${config.maxMessages})`);
     return true;
   }
 
-  // Check token count threshold
   if (config.maxTokens) {
     const tokens = tokenCount ?? calculateContextTokens(context);
     if (tokens >= config.maxTokens) {
@@ -174,8 +138,8 @@ export function shouldCompact(
 }
 
 /**
- * Compact a context by summarizing old messages using AI
- * Uses Claude API to create intelligent summaries
+ * Compact context by AI-summarizing old messages.
+ * Preserves recent messages and replaces old ones with a summary.
  */
 export async function compactContext(
   context: Context,
@@ -187,14 +151,10 @@ export async function compactContext(
   const keepCount = config.keepRecentMessages ?? 10;
 
   if (context.messages.length <= keepCount) {
-    return context; // Nothing to compact
+    return context;
   }
 
-  // Find a clean cut point that doesn't orphan toolResults
-  // Strategy: collect all toolUse IDs in kept portion, ensure all toolResults have matching toolUses
   let cutIndex = context.messages.length - keepCount;
-
-  // Helper to collect toolUse IDs from a slice
   const collectToolUseIds = (msgs: Message[]): Set<string> => {
     const ids = new Set<string>();
     for (const msg of msgs) {
@@ -210,7 +170,6 @@ export async function compactContext(
     return ids;
   };
 
-  // Helper to check if all toolResults have matching toolUses
   const hasOrphanedToolResults = (msgs: Message[]): boolean => {
     const toolUseIds = collectToolUseIds(msgs);
     for (const msg of msgs) {
@@ -224,8 +183,6 @@ export async function compactContext(
     return false;
   };
 
-  // Move cut point earlier until we have no orphaned toolResults
-  // Max 50 iterations to prevent infinite loop
   let iterations = 0;
   while (cutIndex > 0 && iterations < 50) {
     const keptMessages = context.messages.slice(cutIndex);
@@ -236,13 +193,11 @@ export async function compactContext(
     iterations++;
   }
 
-  // If still can't find clean cut, just keep everything
   if (hasOrphanedToolResults(context.messages.slice(cutIndex))) {
     console.warn(`⚠️ Compaction: couldn't find clean cut point, keeping all messages`);
     return context;
   }
 
-  // Split messages at the clean cut point
   const recentMessages = context.messages.slice(cutIndex);
   const oldMessages = context.messages.slice(0, cutIndex);
 
@@ -250,15 +205,30 @@ export async function compactContext(
     `🗜️  Compacting ${oldMessages.length} old messages, keeping ${recentMessages.length} recent (cut at clean boundary)`
   );
 
-  // Use AI to create intelligent summary
   try {
     const result = await summarizeWithFallback({
       messages: oldMessages,
       apiKey,
       contextWindow: config.maxTokens ?? 150000,
       maxSummaryTokens: 2000,
-      customInstructions:
-        "Focus on conversation flow, key decisions, action items, and technical details that matter for continuity.",
+      customInstructions: `Output a structured summary using EXACTLY these sections:
+
+## User Intent
+What the user is trying to accomplish (1-2 sentences).
+
+## Key Decisions
+Bullet list of decisions made and commitments agreed upon.
+
+## Important Context
+Critical facts, preferences, constraints, or technical details needed for continuity.
+
+## Actions Taken
+What was done: tools used, messages sent, transactions made (with specific values/addresses if relevant).
+
+## Open Items
+Unfinished tasks, pending questions, or next steps.
+
+Keep each section concise. Omit a section if empty. Preserve specific names, numbers, and identifiers.`,
       provider,
       utilityModel,
     });
@@ -282,7 +252,6 @@ export async function compactContext(
   } catch (error) {
     console.error("AI summarization failed, using fallback:", error);
 
-    // Fallback to simple note if AI summarization fails completely
     const summaryText = `[Auto-compacted: ${oldMessages.length} earlier messages from this conversation]`;
 
     const summaryMessage: Message = {
@@ -298,11 +267,6 @@ export async function compactContext(
   }
 }
 
-/**
- * Compact and save transcript for a session
- * Creates new session ID and migrates to compacted transcript
- * Saves session memory for audit trail (OpenClaw-style)
- */
 export async function compactAndSaveTranscript(
   sessionId: string,
   context: Context,
@@ -312,13 +276,10 @@ export async function compactAndSaveTranscript(
   provider?: SupportedProvider,
   utilityModel?: string
 ): Promise<string> {
-  // Generate new session ID for compacted transcript
   const newSessionId = randomUUID();
 
   console.log(`📝 Creating compacted transcript: ${sessionId} → ${newSessionId}`);
 
-  // SAVE SESSION MEMORY FIRST (before compaction)
-  // This preserves full context in human-readable markdown format
   if (chatId) {
     await saveSessionMemory({
       oldSessionId: sessionId,
@@ -331,10 +292,8 @@ export async function compactAndSaveTranscript(
     });
   }
 
-  // Compact the context with AI summarization
   const compactedContext = await compactContext(context, config, apiKey, provider, utilityModel);
 
-  // Write compacted messages to new transcript
   for (const message of compactedContext.messages) {
     appendToTranscript(newSessionId, message);
   }
@@ -342,9 +301,6 @@ export async function compactAndSaveTranscript(
   return newSessionId;
 }
 
-/**
- * Auto-compaction manager (to be integrated into runtime)
- */
 export class CompactionManager {
   private config: CompactionConfig;
 
@@ -352,10 +308,6 @@ export class CompactionManager {
     this.config = config;
   }
 
-  /**
-   * Check and perform compaction if needed
-   * Returns new session ID if compacted, null otherwise
-   */
   async checkAndCompact(
     sessionId: string,
     context: Context,
@@ -364,10 +316,8 @@ export class CompactionManager {
     provider?: SupportedProvider,
     utilityModel?: string
   ): Promise<string | null> {
-    // Compute token count once for both checks
     const tokenCount = calculateContextTokens(context);
 
-    // Check for soft threshold memory flush BEFORE compaction
     if (shouldFlushMemory(context, this.config, tokenCount)) {
       flushMemoryToDailyLog(context);
     }
@@ -376,7 +326,6 @@ export class CompactionManager {
       return null;
     }
 
-    // Flush memory one last time before compacting
     if (this.config.memoryFlushEnabled) {
       flushMemoryToDailyLog(context);
     }
@@ -396,16 +345,10 @@ export class CompactionManager {
     return newSessionId;
   }
 
-  /**
-   * Update configuration
-   */
   updateConfig(config: Partial<CompactionConfig>): void {
     this.config = { ...this.config, ...config };
   }
 
-  /**
-   * Get current configuration
-   */
   getConfig(): CompactionConfig {
     return { ...this.config };
   }

@@ -4,12 +4,9 @@ import { JOURNAL_SCHEMA } from "../utils/module-db.js";
 /**
  * Compare two semver version strings.
  * Returns: -1 if a < b, 0 if a === b, 1 if a > b
- *
- * Handles versions like "1.0.0", "1.10.0", "2.0.0-beta"
  */
 function compareSemver(a: string, b: string): number {
   const parseVersion = (v: string) => {
-    // Extract numeric parts, ignore pre-release suffixes for comparison
     const parts = v.split("-")[0].split(".").map(Number);
     return {
       major: parts[0] || 0,
@@ -27,19 +24,13 @@ function compareSemver(a: string, b: string): number {
   return 0;
 }
 
-/**
- * Check if version a is less than version b using proper semver comparison
- */
 function versionLessThan(a: string, b: string): boolean {
   return compareSemver(a, b) < 0;
 }
 
 /**
- * Complete SQLite schema for Tonnet Memory System
- *
- * Two main subsystems:
- * 1. Agent Memory - What the agent knows (MEMORY.md, sessions, tasks)
- * 2. Telegram Feed - What the agent sees (all Telegram messages)
+ * SQLite schema for Teleton Memory System
+ * Agent Memory (MEMORY.md, sessions, tasks) + Telegram Feed (messages)
  */
 
 export function ensureSchema(db: Database.Database): void {
@@ -278,10 +269,8 @@ export function ensureSchema(db: Database.Database): void {
 
 /**
  * Create vector tables using sqlite-vec extension
- * Must be called after loading the vec0 extension
  */
 export function ensureVectorTables(db: Database.Database, dimensions: number): void {
-  // Drop existing tables if dimensions changed
   const existingDims = db
     .prepare(
       `
@@ -296,7 +285,6 @@ export function ensureVectorTables(db: Database.Database, dimensions: number): v
     db.exec(`DROP TABLE IF EXISTS tg_messages_vec`);
   }
 
-  // Create vector tables with cosine distance metric
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vec USING vec0(
       id TEXT PRIMARY KEY,
@@ -340,29 +328,22 @@ export const CURRENT_SCHEMA_VERSION = "1.9.0";
  */
 export function runMigrations(db: Database.Database): void {
   const currentVersion = getSchemaVersion(db);
-
-  // Migration: 1.0.0 → 1.1.0 (Add scheduled tasks support)
   if (!currentVersion || versionLessThan(currentVersion, "1.1.0")) {
     console.log("📦 Running migration: Adding scheduled task columns...");
 
     try {
-      // Check if tasks table exists
       const tableExists = db
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'")
         .get();
 
       if (!tableExists) {
         console.log("  Tasks table doesn't exist yet, skipping column migration");
-        // The ensureSchema call will create the table with all columns
         setSchemaVersion(db, CURRENT_SCHEMA_VERSION);
         return;
       }
 
-      // Check if columns exist before adding (SQLite doesn't support IF NOT EXISTS for columns)
       const tableInfo = db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
       const existingColumns = tableInfo.map((col) => col.name);
-
-      // Add new columns to tasks table
       if (!existingColumns.includes("scheduled_for")) {
         db.exec(`ALTER TABLE tasks ADD COLUMN scheduled_for INTEGER`);
       }
@@ -376,12 +357,10 @@ export function runMigrations(db: Database.Database): void {
         db.exec(`ALTER TABLE tasks ADD COLUMN scheduled_message_id INTEGER`);
       }
 
-      // Create scheduled_for index if not exists
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_tasks_scheduled ON tasks(scheduled_for) WHERE scheduled_for IS NOT NULL`
       );
 
-      // Create task_dependencies table
       db.exec(`
         CREATE TABLE IF NOT EXISTS task_dependencies (
           task_id TEXT NOT NULL,
@@ -401,8 +380,6 @@ export function runMigrations(db: Database.Database): void {
       throw error;
     }
   }
-
-  // Migration 1.2.0: Extend sessions table
   if (!currentVersion || versionLessThan(currentVersion, "1.2.0")) {
     try {
       console.log("🔄 Running migration 1.2.0: Extend sessions table for SQLite backend");
@@ -412,7 +389,6 @@ export function runMigrations(db: Database.Database): void {
         try {
           db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
         } catch (e: any) {
-          // Ignore if column already exists
           if (!e.message.includes("duplicate column name")) {
             throw e;
           }
@@ -432,17 +408,13 @@ export function runMigrations(db: Database.Database): void {
       addColumnIfNotExists("sessions", "provider", "TEXT");
       addColumnIfNotExists("sessions", "last_reset_date", "TEXT");
 
-      // Rename started_at to match createdAt semantics (store ms timestamps)
-      // SQLite doesn't support MODIFY COLUMN, so we check if it needs adjustment
       const sessions = db.prepare("SELECT started_at FROM sessions LIMIT 1").all() as any[];
       if (sessions.length > 0 && sessions[0].started_at < 1000000000000) {
-        // Old format: Unix epoch in seconds, convert to milliseconds
         db.exec(
           "UPDATE sessions SET started_at = started_at * 1000 WHERE started_at < 1000000000000"
         );
       }
 
-      // Create updated_at index
       db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC)");
 
       console.log("✅ Migration 1.2.0 complete: Sessions table extended");
@@ -451,10 +423,6 @@ export function runMigrations(db: Database.Database): void {
       throw error;
     }
   }
-
-  // Migrations 1.5.0-1.8.0 (deals, casino) removed — these modules now manage their own DBs.
-
-  // Migration 1.9.0: Upgrade embedding_cache to BLOB storage
   if (!currentVersion || versionLessThan(currentVersion, "1.9.0")) {
     console.log("🔄 Running migration 1.9.0: Upgrade embedding_cache to BLOB storage");
     try {
@@ -479,6 +447,5 @@ export function runMigrations(db: Database.Database): void {
     }
   }
 
-  // Update schema version
   setSchemaVersion(db, CURRENT_SCHEMA_VERSION);
 }

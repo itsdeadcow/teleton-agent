@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
-import { KNOWLEDGE_CHUNK_SIZE, KNOWLEDGE_CHUNK_OVERLAP } from "../../constants/limits.js";
+import { KNOWLEDGE_CHUNK_SIZE } from "../../constants/limits.js";
 import type { EmbeddingProvider } from "../embeddings/provider.js";
 import { hashText, serializeEmbedding, deserializeEmbedding } from "../embeddings/index.js";
 
@@ -15,9 +15,6 @@ export interface KnowledgeChunk {
   hash: string;
 }
 
-/**
- * Index MEMORY.md and memory/*.md files
- */
 export class KnowledgeIndexer {
   constructor(
     private db: Database.Database,
@@ -26,9 +23,6 @@ export class KnowledgeIndexer {
     private vectorEnabled: boolean
   ) {}
 
-  /**
-   * Index all memory files
-   */
   async indexAll(): Promise<{ indexed: number; skipped: number }> {
     const files = this.listMemoryFiles();
     let indexed = 0;
@@ -46,9 +40,6 @@ export class KnowledgeIndexer {
     return { indexed, skipped };
   }
 
-  /**
-   * Index a single file
-   */
   async indexFile(absPath: string): Promise<boolean> {
     if (!existsSync(absPath) || !absPath.endsWith(".md")) {
       return false;
@@ -58,16 +49,14 @@ export class KnowledgeIndexer {
     const relPath = absPath.replace(this.workspaceDir + "/", "");
     const fileHash = hashText(content);
 
-    // Check if already indexed with same hash
     const existing = this.db
       .prepare(`SELECT hash FROM knowledge WHERE path = ? AND source = 'memory' LIMIT 1`)
       .get(relPath) as { hash: string } | undefined;
 
     if (existing?.hash === fileHash) {
-      return false; // Already up to date
+      return false;
     }
 
-    // Delete old chunks (and their vectors)
     if (this.vectorEnabled) {
       this.db
         .prepare(
@@ -79,14 +68,10 @@ export class KnowledgeIndexer {
     }
     this.db.prepare(`DELETE FROM knowledge WHERE path = ? AND source = 'memory'`).run(relPath);
 
-    // Chunk the content
     const chunks = this.chunkMarkdown(content, relPath);
-
-    // Compute embeddings
     const texts = chunks.map((c) => c.text);
     const embeddings = await this.embedder.embedBatch(texts);
 
-    // Insert chunks
     const insert = this.db.prepare(`
       INSERT INTO knowledge (id, source, path, text, embedding, start_line, end_line, hash)
       VALUES (?, 'memory', ?, ?, ?, ?, ?, ?)
@@ -118,19 +103,14 @@ export class KnowledgeIndexer {
     return true;
   }
 
-  /**
-   * List all memory files
-   */
   private listMemoryFiles(): string[] {
     const files: string[] = [];
 
-    // MEMORY.md at root
     const memoryMd = join(this.workspaceDir, "MEMORY.md");
     if (existsSync(memoryMd)) {
       files.push(memoryMd);
     }
 
-    // memory/*.md
     const memoryDir = join(this.workspaceDir, "memory");
     if (existsSync(memoryDir)) {
       const entries = readdirSync(memoryDir);
@@ -146,58 +126,65 @@ export class KnowledgeIndexer {
   }
 
   /**
-   * Chunk markdown content
+   * Chunk markdown content with structure awareness.
+   * Respects heading boundaries, code blocks, and list groups.
+   * Target: KNOWLEDGE_CHUNK_SIZE chars, hard max: 2x target.
    */
   private chunkMarkdown(content: string, path: string): KnowledgeChunk[] {
     const lines = content.split("\n");
     const chunks: KnowledgeChunk[] = [];
-    const chunkSize = KNOWLEDGE_CHUNK_SIZE;
-    const overlap = KNOWLEDGE_CHUNK_OVERLAP;
+    const targetSize = KNOWLEDGE_CHUNK_SIZE;
+    const hardMax = targetSize * 2;
 
     let currentChunk = "";
     let startLine = 1;
     let currentLine = 1;
+    let inCodeBlock = false;
+
+    const flushChunk = () => {
+      const text = currentChunk.trim();
+      if (text.length > 0) {
+        chunks.push({
+          id: hashText(`${path}:${startLine}:${currentLine - 1}`),
+          source: "memory",
+          path,
+          text,
+          startLine,
+          endLine: currentLine - 1,
+          hash: hashText(text),
+        });
+      }
+      currentChunk = "";
+      startLine = currentLine;
+    };
 
     for (const line of lines) {
-      currentChunk += line + "\n";
-
-      if (currentChunk.length >= chunkSize) {
-        const text = currentChunk.trim();
-        if (text.length > 0) {
-          chunks.push({
-            id: hashText(`${path}:${startLine}:${currentLine}`),
-            source: "memory",
-            path,
-            text,
-            startLine,
-            endLine: currentLine,
-            hash: hashText(text),
-          });
-        }
-
-        // Overlap: keep last N chars
-        const overlapText = currentChunk.slice(-overlap);
-        currentChunk = overlapText;
-        startLine = currentLine + 1;
+      if (line.trimStart().startsWith("```")) {
+        inCodeBlock = !inCodeBlock;
       }
 
+      if (!inCodeBlock && currentChunk.length >= targetSize) {
+        const isHeading = /^#{1,6}\s/.test(line);
+        const isBlankLine = line.trim() === "";
+        const isHorizontalRule = /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim());
+
+        if (isHeading) {
+          flushChunk();
+        } else if ((isBlankLine || isHorizontalRule) && currentChunk.length >= targetSize) {
+          currentChunk += line + "\n";
+          currentLine++;
+          flushChunk();
+          continue;
+        } else if (currentChunk.length >= hardMax) {
+          flushChunk();
+        }
+      }
+
+      currentChunk += line + "\n";
       currentLine++;
     }
 
-    // Last chunk
-    const text = currentChunk.trim();
-    if (text.length > 0) {
-      chunks.push({
-        id: hashText(`${path}:${startLine}:${currentLine}`),
-        source: "memory",
-        path,
-        text,
-        startLine,
-        endLine: currentLine,
-        hash: hashText(text),
-      });
-    }
-
+    flushChunk();
     return chunks;
   }
 }

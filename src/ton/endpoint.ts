@@ -1,27 +1,51 @@
-/**
- * Cached wrapper for @orbs-network/ton-access getHttpEndpoint()
- *
- * The upstream function makes a network call to discover a healthy
- * TON HTTP-API node.  Caching avoids repeating that round-trip on
- * every payment verification / payout within a short window.
- */
-
-import { getHttpEndpoint } from "@orbs-network/ton-access";
-
-const ENDPOINT_CACHE_TTL_MS = 60_000; // 60 seconds
+const ENDPOINT_CACHE_TTL_MS = 60_000;
+const ORBS_HOST = "ton.access.orbs.network";
+const ORBS_TOPOLOGY_URL = `https://${ORBS_HOST}/mngr/nodes?npm_version=2.3.3`;
+const TONCENTER_FALLBACK = `https://toncenter.com/api/v2/jsonRPC`;
 
 let _cache: { url: string; ts: number } | null = null;
 
-/**
- * Return a mainnet TON HTTP endpoint, re-using a cached value
- * when it is less than 60 seconds old.
- */
+interface OrbsNode {
+  NodeId: string;
+  Healthy: string;
+  Weight: number;
+  Mngr?: { health?: Record<string, boolean> };
+}
+
+async function discoverOrbsEndpoint(): Promise<string> {
+  const res = await fetch(ORBS_TOPOLOGY_URL);
+  const nodes: OrbsNode[] = await res.json();
+
+  const healthy = nodes.filter(
+    (n) => n.Healthy === "1" && n.Weight > 0 && n.Mngr?.health?.["v2-mainnet"]
+  );
+  if (healthy.length === 0) throw new Error("no healthy orbs nodes");
+
+  const totalWeight = healthy.reduce((sum, n) => sum + n.Weight, 0);
+  let r = Math.floor(Math.random() * totalWeight);
+  let chosen = healthy[0];
+  for (const node of healthy) {
+    r -= node.Weight;
+    if (r < 0) {
+      chosen = node;
+      break;
+    }
+  }
+
+  return `https://${ORBS_HOST}/${chosen.NodeId}/1/mainnet/toncenter-api-v2/jsonRPC`;
+}
+
 export async function getCachedHttpEndpoint(): Promise<string> {
   if (_cache && Date.now() - _cache.ts < ENDPOINT_CACHE_TTL_MS) {
     return _cache.url;
   }
 
-  const url = await getHttpEndpoint({ network: "mainnet" });
+  let url: string;
+  try {
+    url = await discoverOrbsEndpoint();
+  } catch {
+    url = TONCENTER_FALLBACK;
+  }
   _cache = { url, ts: Date.now() };
   return url;
 }

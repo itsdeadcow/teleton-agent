@@ -41,9 +41,6 @@ export function loadConfig(configPath: string = DEFAULT_CONFIG_PATH): Config {
     throw new Error(`Invalid config: ${result.error.message}`);
   }
 
-  // Resolve provider-aware model default
-  // If user didn't specify a model (Zod applied "claude-opus-4-5-20251101" default),
-  // override with the correct default for their chosen provider
   const config = result.data;
   const provider = config.agent.provider as SupportedProvider;
   if (provider !== "anthropic" && !(raw as any).agent?.model) {
@@ -51,14 +48,11 @@ export function loadConfig(configPath: string = DEFAULT_CONFIG_PATH): Config {
     config.agent.model = meta.defaultModel;
   }
 
-  // Expand paths
   config.telegram.session_path = expandPath(config.telegram.session_path);
   config.storage.sessions_file = expandPath(config.storage.sessions_file);
   config.storage.pairing_file = expandPath(config.storage.pairing_file);
   config.storage.memory_file = expandPath(config.storage.memory_file);
 
-  // Allow environment variable overrides for secrets (useful for CI/CD and containers)
-  // Priority: ENV > CONFIG FILE
   if (process.env.TELETON_API_KEY) {
     config.agent.api_key = process.env.TELETON_API_KEY;
   }
@@ -76,6 +70,20 @@ export function loadConfig(configPath: string = DEFAULT_CONFIG_PATH): Config {
   }
   if (process.env.TELETON_TG_PHONE) {
     config.telegram.phone = process.env.TELETON_TG_PHONE;
+  }
+
+  // WebUI environment variable overrides
+  if (process.env.TELETON_WEBUI_ENABLED) {
+    config.webui.enabled = process.env.TELETON_WEBUI_ENABLED === "true";
+  }
+  if (process.env.TELETON_WEBUI_PORT) {
+    const port = parseInt(process.env.TELETON_WEBUI_PORT, 10);
+    if (!isNaN(port)) {
+      config.webui.port = port;
+    }
+  }
+  if (process.env.TELETON_WEBUI_HOST) {
+    config.webui.host = process.env.TELETON_WEBUI_HOST;
   }
 
   return config;

@@ -6,10 +6,6 @@ import { Type } from "@sinclair/typebox";
 import { Api } from "telegram";
 import type { Tool, ToolExecutor, ToolResult } from "../../types.js";
 
-// ============================================
-// KICK USER
-// ============================================
-
 interface KickUserParams {
   chat_id: string;
   user_id: string;
@@ -93,10 +89,6 @@ export const telegramKickUserExecutor: ToolExecutor<KickUserParams> = async (
     };
   }
 };
-
-// ============================================
-// BAN USER
-// ============================================
 
 interface BanUserParams {
   chat_id: string;
@@ -204,10 +196,6 @@ export const telegramBanUserExecutor: ToolExecutor<BanUserParams> = async (
     };
   }
 };
-
-// ============================================
-// UNBAN USER
-// ============================================
 
 interface UnbanUserParams {
   chat_id: string;

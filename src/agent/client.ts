@@ -14,20 +14,13 @@ import { appendToTranscript, readTranscript } from "../session/transcript.js";
 import { getProviderMetadata, type SupportedProvider } from "../config/providers.js";
 import { sanitizeToolsForGemini } from "./schema-sanitizer.js";
 
-/**
- * Determines if an API key is an OAuth/setup token (Anthropic only)
- */
 export function isOAuthToken(apiKey: string, provider?: string): boolean {
   if (provider && provider !== "anthropic") return false;
   return apiKey.startsWith("sk-ant-oat01-");
 }
 
-// Cache model instances keyed by "provider:modelId"
 const modelCache = new Map<string, Model<Api>>();
 
-/**
- * Get a model from any supported provider via pi-ai
- */
 export function getProviderModel(provider: SupportedProvider, modelId: string): Model<Api> {
   const cacheKey = `${provider}:${modelId}`;
   const cached = modelCache.get(cacheKey);
@@ -43,7 +36,6 @@ export function getProviderModel(provider: SupportedProvider, modelId: string): 
     modelCache.set(cacheKey, model);
     return model;
   } catch (e) {
-    // Fallback to provider's default model
     console.warn(
       `Model ${modelId} not found for ${provider}, falling back to ${meta.defaultModel}`
     );
@@ -68,9 +60,6 @@ export function getProviderModel(provider: SupportedProvider, modelId: string): 
   }
 }
 
-/**
- * Get the utility model (cheap, fast) for summarization and slug generation
- */
 export function getUtilityModel(provider: SupportedProvider, overrideModel?: string): Model<Api> {
   const meta = getProviderMetadata(provider);
   const modelId = overrideModel || meta.utilityModel;
@@ -93,10 +82,6 @@ export interface ChatResponse {
   context: Context;
 }
 
-/**
- * Send a message to LLM using pi-ai Context system with optional transcript persistence.
- * Supports any provider configured in the agent config.
- */
 export async function chatWithContext(
   config: AgentConfig,
   options: ChatOptions
@@ -104,7 +89,6 @@ export async function chatWithContext(
   const provider = (config.provider || "anthropic") as SupportedProvider;
   const model = getProviderModel(provider, config.model);
 
-  // Gemini requires clean OpenAPI 3.0 schemas — sanitize TypeBox anyOf/const patterns
   const tools =
     provider === "google" && options.tools ? sanitizeToolsForGemini(options.tools) : options.tools;
 
@@ -114,7 +98,6 @@ export async function chatWithContext(
     tools,
   };
 
-  // Get response from LLM
   const response = await complete(model, context, {
     apiKey: config.api_key,
     maxTokens: options.maxTokens ?? config.max_tokens,
@@ -122,20 +105,13 @@ export async function chatWithContext(
     sessionId: options.sessionId,
   });
 
-  // Persist to transcript if requested
-  // NOTE: Only persist the assistant response here.
-  // User messages and tool results are persisted separately in runtime.ts
-  // to avoid duplicates during the agentic loop.
   if (options.persistTranscript && options.sessionId) {
-    // Append assistant response only
     appendToTranscript(options.sessionId, response);
   }
 
-  // Extract text from response
   const textContent = response.content.find((block) => block.type === "text");
   const text = textContent?.type === "text" ? textContent.text : "";
 
-  // Return updated context
   const updatedContext: Context = {
     ...context,
     messages: [...context.messages, response],
@@ -148,9 +124,6 @@ export async function chatWithContext(
   };
 }
 
-/**
- * Load context from transcript (for session resumption)
- */
 export function loadContextFromTranscript(sessionId: string, systemPrompt?: string): Context {
   const messages = readTranscript(sessionId) as Message[];
 
@@ -160,8 +133,6 @@ export function loadContextFromTranscript(sessionId: string, systemPrompt?: stri
   };
 }
 
-// Legacy exports for compatibility
 export function createClient(_config: AgentConfig): null {
-  // No longer needed with pi-ai
   return null;
 }

@@ -1,7 +1,3 @@
-/**
- * Retry utility with exponential backoff for blockchain operations
- */
-
 import {
   RETRY_DEFAULT_MAX_ATTEMPTS,
   RETRY_DEFAULT_BASE_DELAY_MS,
@@ -26,23 +22,15 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
   timeout: RETRY_DEFAULT_TIMEOUT_MS,
 };
 
-/**
- * Sleep for a given number of milliseconds
- */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-/**
- * Retry a function with exponential backoff
- */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     try {
-      // Add timeout wrapper
       const result = await Promise.race([
         fn(),
         new Promise<never>((_, reject) =>
@@ -54,9 +42,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
       lastError = error instanceof Error ? error : new Error(String(error));
       console.warn(`Retry attempt ${attempt}/${opts.maxAttempts} failed:`, lastError.message);
 
-      // Don't wait after last attempt
       if (attempt < opts.maxAttempts) {
-        // Exponential backoff: 1s, 2s, 4s, ...
         const delay = Math.min(opts.baseDelayMs * Math.pow(2, attempt - 1), opts.maxDelayMs);
         await sleep(delay);
       }
@@ -65,10 +51,6 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
 
   throw lastError || new Error("All retry attempts failed");
 }
-
-/**
- * Retry specifically for blockchain operations (longer timeouts)
- */
 export async function withBlockchainRetry<T>(
   fn: () => Promise<T>,
   operation: string = "blockchain operation"

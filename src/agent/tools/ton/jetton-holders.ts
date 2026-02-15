@@ -1,18 +1,10 @@
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { tonapiFetch } from "../../../constants/api-endpoints.js";
-
-/**
- * Parameters for jetton_holders tool
- */
 interface JettonHoldersParams {
   jetton_address: string;
   limit?: number;
 }
-
-/**
- * Tool definition for jetton_holders
- */
 export const jettonHoldersTool: Tool = {
   name: "jetton_holders",
   description:
@@ -30,10 +22,6 @@ export const jettonHoldersTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for jetton_holders tool
- */
 export const jettonHoldersExecutor: ToolExecutor<JettonHoldersParams> = async (
   params,
   context
@@ -41,7 +29,6 @@ export const jettonHoldersExecutor: ToolExecutor<JettonHoldersParams> = async (
   try {
     const { jetton_address, limit = 10 } = params;
 
-    // Fetch holders from TonAPI
     const response = await tonapiFetch(
       `/jettons/${jetton_address}/holders?limit=${Math.min(limit, 100)}`
     );
@@ -63,7 +50,6 @@ export const jettonHoldersExecutor: ToolExecutor<JettonHoldersParams> = async (
     const data = await response.json();
     const addresses = data.addresses || [];
 
-    // Fetch jetton info for decimals and symbol
     let decimals = 9;
     let symbol = "TOKEN";
     try {
@@ -77,7 +63,6 @@ export const jettonHoldersExecutor: ToolExecutor<JettonHoldersParams> = async (
       // Ignore
     }
 
-    // Parse holders
     const holders = addresses.map((h: any, index: number) => {
       const balanceRaw = BigInt(h.balance || "0");
       const balanceFormatted = Number(balanceRaw) / 10 ** decimals;
@@ -98,7 +83,6 @@ export const jettonHoldersExecutor: ToolExecutor<JettonHoldersParams> = async (
       0
     );
 
-    // Build message
     let message = `Top ${holders.length} holders of ${symbol}:\n\n`;
     holders.forEach((h: any) => {
       const nameTag = h.name ? ` (${h.name})` : "";

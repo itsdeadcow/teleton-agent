@@ -3,17 +3,9 @@ import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { DEDUST_API_URL } from "./constants.js";
 import { fetchWithTimeout } from "../../../utils/fetch.js";
 import { findAsset, findAssetBySymbol, fromUnits } from "./asset-cache.js";
-
-/**
- * Parameters for dedust_token_info tool
- */
 interface DedustTokenInfoParams {
   token: string;
 }
-
-/**
- * Tool definition for dedust_token_info
- */
 export const dedustTokenInfoTool: Tool = {
   name: "dedust_token_info",
   description:
@@ -63,10 +55,6 @@ interface Holder {
   owner: string;
   balance: string;
 }
-
-/**
- * Executor for dedust_token_info tool
- */
 export const dedustTokenInfoExecutor: ToolExecutor<DedustTokenInfoParams> = async (
   params,
   _context
@@ -132,7 +120,6 @@ export const dedustTokenInfoExecutor: ToolExecutor<DedustTokenInfoParams> = asyn
       time: b.ts,
     }));
 
-    // Build message
     let message = `${name} (${symbol})\n`;
     message += `Address: ${address}\n`;
     message += `Decimals: ${decimals}\n`;

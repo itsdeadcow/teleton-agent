@@ -25,9 +25,6 @@ export interface MemorySystem {
   context: ContextBuilder;
 }
 
-/**
- * Initialize memory system
- */
 export function initializeMemory(config: {
   database: DatabaseConfig;
   embeddings: EmbeddingProviderConfig;
@@ -37,8 +34,6 @@ export function initializeMemory(config: {
   const rawEmbedder = createEmbeddingProvider(config.embeddings);
   const vectorEnabled = db.isVectorSearchReady();
   const database: Database.Database = db.getDb();
-
-  // Wrap with cache unless embeddings are disabled (noop)
   const embedder =
     rawEmbedder.id === "noop" ? rawEmbedder : new CachedEmbeddingProvider(rawEmbedder, database);
 

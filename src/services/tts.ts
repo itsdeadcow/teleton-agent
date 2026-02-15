@@ -134,7 +134,7 @@ export async function generateSpeech(options: TTSOptions): Promise<TTSResult> {
  * Converts WAV to OGG/Opus for Telegram voice messages
  */
 async function generatePiperTTS(text: string, voice: string): Promise<TTSResult> {
-  const tempDir = join(tmpdir(), "tonnet-tts");
+  const tempDir = join(tmpdir(), "teleton-tts");
   if (!existsSync(tempDir)) {
     mkdirSync(tempDir, { recursive: true });
   }
@@ -255,7 +255,7 @@ async function generateEdgeTTS(
   rate?: string,
   pitch?: string
 ): Promise<TTSResult> {
-  const tempDir = join(tmpdir(), "tonnet-tts");
+  const tempDir = join(tmpdir(), "teleton-tts");
   if (!existsSync(tempDir)) {
     mkdirSync(tempDir, { recursive: true });
   }
@@ -309,7 +309,7 @@ async function generateOpenAITTS(text: string, voice: string): Promise<TTSResult
     throw new Error("OPENAI_API_KEY not set. Use Edge TTS (free) or set API key.");
   }
 
-  const tempDir = join(tmpdir(), "tonnet-tts");
+  const tempDir = join(tmpdir(), "teleton-tts");
   if (!existsSync(tempDir)) {
     mkdirSync(tempDir, { recursive: true });
   }
@@ -355,7 +355,7 @@ async function generateElevenLabsTTS(text: string, voiceId: string): Promise<TTS
     throw new Error("ELEVENLABS_API_KEY not set. Use Edge TTS (free) or set API key.");
   }
 
-  const tempDir = join(tmpdir(), "tonnet-tts");
+  const tempDir = join(tmpdir(), "teleton-tts");
   if (!existsSync(tempDir)) {
     mkdirSync(tempDir, { recursive: true });
   }

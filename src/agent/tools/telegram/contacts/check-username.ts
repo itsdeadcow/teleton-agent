@@ -46,10 +46,10 @@ export const telegramCheckUsernameExecutor: ToolExecutor<CheckUsernameParams> = 
     const { username } = params;
     const cleanUsername = username.replace("@", "").toLowerCase();
 
-    if (!cleanUsername || cleanUsername.length < 5) {
+    if (!cleanUsername) {
       return {
         success: false,
-        error: "Username must be at least 5 characters",
+        error: "Username cannot be empty",
       };
     }
 

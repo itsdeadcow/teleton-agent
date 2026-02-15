@@ -13,7 +13,6 @@
 
 import type { Tool } from "@mariozechner/pi-ai";
 
-/** JSON Schema keywords that Gemini function declarations do not support. */
 const UNSUPPORTED_KEYS: ReadonlySet<string> = new Set([
   "$schema",
   "$id",
@@ -25,26 +24,15 @@ const UNSUPPORTED_KEYS: ReadonlySet<string> = new Set([
   "examples",
 ]);
 
-/**
- * Recursively sanitize a JSON Schema object for Gemini compatibility.
- *
- * Main transformations:
- *  1. Strip unsupported keywords ($schema, $id, title, default, etc.)
- *  2. Convert `anyOf[{const:"a"},{const:"b"}]` → `{type:"string", enum:["a","b"]}`
- *  3. Convert standalone `const` → single-value `enum`
- *  4. Recurse into `properties` and `items`
- */
 export function sanitizeSchema(schema: Record<string, unknown>): Record<string, unknown> {
   if (!schema || typeof schema !== "object") return schema;
 
   const result: Record<string, unknown> = { ...schema };
 
-  // 1. Strip unsupported keywords
   for (const key of UNSUPPORTED_KEYS) {
     delete result[key];
   }
 
-  // 2. Convert anyOf + const → enum
   if (Array.isArray(result.anyOf)) {
     const items = result.anyOf as Record<string, unknown>[];
     const nonNull = items.filter((s) => s.type !== "null");
@@ -68,13 +56,11 @@ export function sanitizeSchema(schema: Record<string, unknown>): Record<string, 
     }
   }
 
-  // 3. Clean up degenerate anyOf (empty or all-null) that wasn't handled above
   if (Array.isArray(result.anyOf)) {
     delete result.anyOf;
     if (!result.type) result.type = "string";
   }
 
-  // 4. Convert standalone const → single-value enum
   if (result.const !== undefined) {
     result.enum = [result.const];
     if (!result.type) {
@@ -84,7 +70,6 @@ export function sanitizeSchema(schema: Record<string, unknown>): Record<string, 
     delete result.const;
   }
 
-  // 5. Recurse into object properties
   if (result.properties && typeof result.properties === "object") {
     const props = result.properties as Record<string, unknown>;
     const sanitized: Record<string, unknown> = {};
@@ -97,7 +82,6 @@ export function sanitizeSchema(schema: Record<string, unknown>): Record<string, 
     result.properties = sanitized;
   }
 
-  // 6. Recurse into array items
   if (result.items && typeof result.items === "object" && !Array.isArray(result.items)) {
     result.items = sanitizeSchema(result.items as Record<string, unknown>);
   }
@@ -105,14 +89,6 @@ export function sanitizeSchema(schema: Record<string, unknown>): Record<string, 
   return result;
 }
 
-/**
- * Return a new tools array with Gemini-compatible parameter schemas.
- * The original tool objects are never mutated.
- *
- * The `as Tool` cast is necessary because sanitizeSchema returns a plain
- * Record<string, unknown> (the TypeBox TSchema brand is lost after
- * destructuring), but the runtime shape is identical.
- */
 export function sanitizeToolsForGemini(tools: Tool[]): Tool[] {
   return tools.map(
     (tool) =>

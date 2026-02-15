@@ -1,20 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { getWalletAddress } from "../../../ton/wallet-service.js";
-
-/**
- * Tool definition for ton_get_address
- */
 export const tonGetAddressTool: Tool = {
   name: "ton_get_address",
   description:
     "Get your TON wallet address. Returns the address where you can receive TON cryptocurrency.",
   parameters: Type.Object({}),
 };
-
-/**
- * Executor for ton_get_address tool
- */
 export const tonGetAddressExecutor: ToolExecutor<{}> = async (
   params,
   context

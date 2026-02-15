@@ -1,8 +1,3 @@
-/**
- * Bridge between Tonnet and Telegram using GramJS
- * Replaces MCP-based implementation with real TelegramClient
- */
-
 import { TelegramUserClient, type TelegramClientConfig } from "./client.js";
 import { Api } from "telegram";
 import type { NewMessageEvent } from "telegram/events/NewMessage.js";
@@ -16,31 +11,27 @@ export interface TelegramMessage {
   text: string;
   isGroup: boolean;
   isChannel: boolean;
-  isBot: boolean; // Whether sender is a bot
+  isBot: boolean;
   mentionsMe: boolean;
   timestamp: Date;
-  _rawPeer?: Api.TypePeer; // Store raw peer for replying
-  // Media fields
+  _rawPeer?: Api.TypePeer;
   hasMedia: boolean;
   mediaType?: "photo" | "document" | "video" | "audio" | "voice" | "sticker";
-  _rawMessage?: Api.Message; // Store raw message for media download
+  _rawMessage?: Api.Message;
 }
 
 export interface InlineButton {
   text: string;
-  callback_data: string; // Max 64 bytes
+  callback_data: string;
 }
 
 export interface SendMessageOptions {
   chatId: string;
   text: string;
   replyToId?: number;
-  inlineKeyboard?: InlineButton[][]; // 2D array: rows of buttons
+  inlineKeyboard?: InlineButton[][];
 }
 
-/**
- * Bridge class wrapping TelegramUserClient
- */
 export class TelegramBridge {
   private client: TelegramUserClient;
   private ownUserId?: bigint;
@@ -51,9 +42,6 @@ export class TelegramBridge {
     this.client = new TelegramUserClient(config);
   }
 
-  /**
-   * Connect and authenticate
-   */
   async connect(): Promise<void> {
     await this.client.connect();
     const me = this.client.getMe();
@@ -62,8 +50,6 @@ export class TelegramBridge {
       this.ownUsername = me.username?.toLowerCase();
     }
 
-    // Load dialogs to cache entities for sending messages
-    // This is required for GramJS to resolve user/chat entities
     try {
       await this.getDialogs();
     } catch (error) {
@@ -71,38 +57,23 @@ export class TelegramBridge {
     }
   }
 
-  /**
-   * Disconnect
-   */
   async disconnect(): Promise<void> {
     await this.client.disconnect();
   }
 
-  /**
-   * Check if bridge is available (connected)
-   */
   isAvailable(): boolean {
     return this.client.isConnected();
   }
 
-  /**
-   * Get own user ID
-   */
   getOwnUserId(): bigint | undefined {
     return this.ownUserId;
   }
 
-  /**
-   * Get own username
-   */
   getUsername(): string | undefined {
     const me = this.client.getMe();
     return me?.username;
   }
 
-  /**
-   * Get recent messages from a chat
-   */
   async getMessages(chatId: string, limit: number = 50): Promise<TelegramMessage[]> {
     try {
       const peer = this.peerCache.get(chatId) || chatId;
@@ -117,17 +88,12 @@ export class TelegramBridge {
     }
   }
 
-  /**
-   * Send a message to a chat
-   */
   async sendMessage(
     options: SendMessageOptions & { _rawPeer?: Api.TypePeer }
   ): Promise<Api.Message> {
     try {
-      // Use cached peer if available, otherwise use chatId
       const peer = options._rawPeer || this.peerCache.get(options.chatId) || options.chatId;
 
-      // Build inline keyboard if provided
       if (options.inlineKeyboard && options.inlineKeyboard.length > 0) {
         const buttons = new Api.ReplyInlineMarkup({
           rows: options.inlineKeyboard.map(
@@ -144,7 +110,6 @@ export class TelegramBridge {
           ),
         });
 
-        // Use GramJS client directly for inline keyboards
         const gramJsClient = this.client.getClient();
         return await gramJsClient.sendMessage(peer, {
           message: options.text,
@@ -153,7 +118,6 @@ export class TelegramBridge {
         });
       }
 
-      // Regular message without buttons
       return await this.client.sendMessage(peer, {
         message: options.text,
         replyTo: options.replyToId,
@@ -164,9 +128,6 @@ export class TelegramBridge {
     }
   }
 
-  /**
-   * Edit an existing message
-   */
   async editMessage(options: {
     chatId: string;
     messageId: number;
@@ -176,7 +137,6 @@ export class TelegramBridge {
     try {
       const peer = this.peerCache.get(options.chatId) || options.chatId;
 
-      // Build inline keyboard if provided
       let buttons;
       if (options.inlineKeyboard && options.inlineKeyboard.length > 0) {
         buttons = new Api.ReplyInlineMarkup({
@@ -205,7 +165,6 @@ export class TelegramBridge {
         })
       );
 
-      // Extract message from Updates
       if (result.className === "Updates" && result.updates) {
         const messageUpdate = result.updates.find(
           (u: any) =>
@@ -223,9 +182,6 @@ export class TelegramBridge {
     }
   }
 
-  /**
-   * Get list of dialogs (chats)
-   */
   async getDialogs(): Promise<
     Array<{
       id: string;
@@ -248,9 +204,6 @@ export class TelegramBridge {
     }
   }
 
-  /**
-   * Set typing indicator
-   */
   async setTyping(chatId: string): Promise<void> {
     try {
       await this.client.setTyping(chatId);
@@ -259,15 +212,10 @@ export class TelegramBridge {
     }
   }
 
-  /**
-   * Send a reaction to a message
-   */
   async sendReaction(chatId: string, messageId: number, emoji: string): Promise<void> {
     try {
-      // Get peer from cache or use chatId directly
       const peer = this.peerCache.get(chatId) || chatId;
 
-      // Send reaction using sendReaction API
       await this.client.getClient().invoke(
         new Api.messages.SendReaction({
           peer,
@@ -285,9 +233,6 @@ export class TelegramBridge {
     }
   }
 
-  /**
-   * Register event handler for new messages
-   */
   onNewMessage(
     handler: (message: TelegramMessage) => void | Promise<void>,
     filters?: {
@@ -309,26 +254,19 @@ export class TelegramBridge {
     );
   }
 
-  /**
-   * Parse GramJS message to TelegramMessage
-   * Fetches sender info (username, firstName) from the message
-   */
   private async parseMessage(msg: Api.Message): Promise<TelegramMessage> {
     const chatId = msg.chatId?.toString() ?? msg.peerId?.toString() ?? "unknown";
     const senderIdBig = msg.senderId ? BigInt(msg.senderId.toString()) : BigInt(0);
     const senderId = Number(senderIdBig);
 
-    // Check if message mentions us (MTProto flag + text fallback)
     let mentionsMe = msg.mentioned ?? false;
     if (!mentionsMe && this.ownUsername && msg.message) {
       mentionsMe = msg.message.toLowerCase().includes(`@${this.ownUsername}`);
     }
 
-    // Determine chat type
     const isChannel = msg.post ?? false;
     const isGroup = !isChannel && chatId.startsWith("-");
 
-    // Cache the peer for replying later (FIFO eviction at 1000 entries)
     if (msg.peerId) {
       this.peerCache.set(chatId, msg.peerId);
       if (this.peerCache.size > 5000) {
@@ -337,7 +275,6 @@ export class TelegramBridge {
       }
     }
 
-    // Fetch sender info
     let senderUsername: string | undefined;
     let senderFirstName: string | undefined;
     let isBot = false;
@@ -352,15 +289,11 @@ export class TelegramBridge {
       if (sender && "firstName" in sender) {
         senderFirstName = sender.firstName ?? undefined;
       }
-      // Check if sender is a bot
       if (sender && "bot" in sender) {
         isBot = (sender as any).bot ?? false;
       }
-    } catch (e) {
-      // Sender fetch failed or timed out, continue without sender info
-    }
+    } catch (e) {}
 
-    // Detect media type
     const hasMedia = !!(
       msg.photo ||
       msg.document ||
@@ -377,31 +310,21 @@ export class TelegramBridge {
     else if (msg.sticker) mediaType = "sticker";
     else if (msg.document) mediaType = "document";
 
-    // Extract text - handle dice/game media specially
     let text = msg.message ?? "";
     if (!text && msg.media) {
-      // Check for dice (🎲, 🎯, 🏀, ⚽, 🎳, 🎰)
       if (msg.media.className === "MessageMediaDice") {
         const dice = msg.media as Api.MessageMediaDice;
         text = `[Dice: ${dice.emoticon} = ${dice.value}]`;
-      }
-      // Check for game
-      else if (msg.media.className === "MessageMediaGame") {
+      } else if (msg.media.className === "MessageMediaGame") {
         const game = msg.media as Api.MessageMediaGame;
         text = `[Game: ${game.game.title}]`;
-      }
-      // Check for poll
-      else if (msg.media.className === "MessageMediaPoll") {
+      } else if (msg.media.className === "MessageMediaPoll") {
         const poll = msg.media as Api.MessageMediaPoll;
         text = `[Poll: ${poll.poll.question.text}]`;
-      }
-      // Check for contact
-      else if (msg.media.className === "MessageMediaContact") {
+      } else if (msg.media.className === "MessageMediaContact") {
         const contact = msg.media as Api.MessageMediaContact;
         text = `[Contact: ${contact.firstName} ${contact.lastName || ""} - ${contact.phoneNumber}]`;
-      }
-      // Check for location
-      else if (
+      } else if (
         msg.media.className === "MessageMediaGeo" ||
         msg.media.className === "MessageMediaGeoLive"
       ) {
@@ -424,20 +347,14 @@ export class TelegramBridge {
       _rawPeer: msg.peerId,
       hasMedia,
       mediaType,
-      _rawMessage: hasMedia ? msg : undefined, // Store raw message only if has media (for download)
+      _rawMessage: hasMedia ? msg : undefined,
     };
   }
 
-  /**
-   * Get cached peer entity for a chat ID (if available)
-   */
   getPeer(chatId: string): Api.TypePeer | undefined {
     return this.peerCache.get(chatId);
   }
 
-  /**
-   * Get the underlying client
-   */
   getClient(): TelegramUserClient {
     return this.client;
   }

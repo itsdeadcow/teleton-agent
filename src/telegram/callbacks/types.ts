@@ -1,8 +1,6 @@
-// Callback query types for inline button interactions
-
 export interface CallbackQuery {
   id: string;
-  data: string; // Format: "action:param1:param2"
+  data: string;
   chatId: string;
   messageId: number;
   userId: number;
@@ -10,7 +8,7 @@ export interface CallbackQuery {
 
 export interface InlineButton {
   text: string;
-  callback_data: string; // Max 64 bytes
+  callback_data: string;
 }
 
 export type CallbackHandler = (query: CallbackQuery) => Promise<void>;

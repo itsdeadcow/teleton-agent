@@ -6,8 +6,8 @@ import { getUtilityModel } from "../agent/client.js";
 import type { SupportedProvider } from "../config/providers.js";
 
 /**
- * Generate a semantic slug for a session using LLM via pi-ai
- * Creates a short, descriptive identifier based on conversation content
+ * Generate a semantic slug for a session using LLM.
+ * Creates a short, descriptive identifier based on conversation content.
  */
 async function generateSlugViaClaude(params: {
   messages: Context["messages"];
@@ -18,7 +18,6 @@ async function generateSlugViaClaude(params: {
   const provider = params.provider || "anthropic";
   const model = getUtilityModel(provider, params.utilityModel);
 
-  // Format recent messages for slug generation
   const formatted = formatMessagesForSummary(params.messages.slice(-10));
 
   if (!formatted.trim()) {
@@ -50,7 +49,6 @@ Slug:`,
     const textContent = response.content.find((block) => block.type === "text");
     const slug = textContent?.type === "text" ? textContent.text.trim() : "";
 
-    // Clean slug: lowercase, kebab-case, max 50 chars
     return (
       slug
         .toLowerCase()
@@ -61,15 +59,14 @@ Slug:`,
     );
   } catch (error) {
     console.warn("Slug generation failed, using fallback:", error);
-    // Fallback to timestamp-based slug
     const now = new Date();
     return `session-${now.getHours().toString().padStart(2, "0")}${now.getMinutes().toString().padStart(2, "0")}`;
   }
 }
 
 /**
- * Save session memory to dated markdown file (OpenClaw-style)
- * Creates audit trail of session transitions for human review
+ * Save session memory to dated markdown file.
+ * Creates audit trail of session transitions for human review.
  */
 export async function saveSessionMemory(params: {
   oldSessionId: string;
@@ -86,9 +83,8 @@ export async function saveSessionMemory(params: {
     await mkdir(memoryDir, { recursive: true });
 
     const now = new Date();
-    const dateStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
+    const dateStr = now.toISOString().split("T")[0];
 
-    // Generate semantic slug from conversation
     console.log("🏷️  Generating semantic slug for session memory...");
     const slug = await generateSlugViaClaude({
       messages: params.context.messages,
@@ -97,14 +93,11 @@ export async function saveSessionMemory(params: {
       utilityModel: params.utilityModel,
     });
 
-    // Create filename with date and slug
     const filename = `${dateStr}-${slug}.md`;
     const filepath = join(memoryDir, filename);
 
-    // Format timestamp
-    const timeStr = now.toISOString().split("T")[1].split(".")[0]; // HH:MM:SS
+    const timeStr = now.toISOString().split("T")[1].split(".")[0];
 
-    // Generate AI summary of the session
     console.log("📝 Generating session summary...");
     let summary: string;
     try {
@@ -122,7 +115,6 @@ export async function saveSessionMemory(params: {
       summary = `Session contained ${params.context.messages.length} messages. Summary generation failed.`;
     }
 
-    // Build markdown content
     const content = `# Session Memory: ${dateStr} ${timeStr} UTC
 
 ## Metadata
@@ -143,10 +135,9 @@ This session was compacted and migrated to a new session ID. The summary above p
 
 ---
 
-*Generated automatically by Tonnet-AI session memory hook*
+*Generated automatically by Teleton-AI session memory hook*
 `;
 
-    // Write to file
     await writeFile(filepath, content, "utf-8");
 
     const relPath = filepath.replace(TELETON_ROOT, "~/.teleton");
@@ -156,6 +147,5 @@ This session was compacted and migrated to a new session ID. The summary above p
       "Failed to save session memory:",
       error instanceof Error ? error.message : String(error)
     );
-    // Don't throw - memory hook failure shouldn't block compaction
   }
 }

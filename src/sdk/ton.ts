@@ -1,7 +1,3 @@
-/**
- * TonSDK implementation — wraps internal TON services for plugin access.
- */
-
 import type Database from "better-sqlite3";
 import type {
   TonSDK,
@@ -12,32 +8,25 @@ import type {
   SDKVerifyPaymentParams,
   SDKPaymentVerification,
   PluginLogger,
-} from "./types.js";
-import { PluginSDKError } from "./errors.js";
+} from "@teleton-agent/sdk";
+import { PluginSDKError } from "@teleton-agent/sdk";
 import { getWalletAddress, getWalletBalance, getTonPrice } from "../ton/wallet-service.js";
 import { sendTon } from "../ton/transfer.js";
 import { PAYMENT_TOLERANCE_RATIO } from "../constants/limits.js";
 import { withBlockchainRetry } from "../utils/retry.js";
 
-/** Default max payment age in minutes */
 const DEFAULT_MAX_AGE_MINUTES = 10;
 
-/** Default transaction retention in days */
 const DEFAULT_TX_RETENTION_DAYS = 30;
 
-/** Cleanup probability (10% chance per verifyPayment call) */
 const CLEANUP_PROBABILITY = 0.1;
 
-/**
- * Opportunistic cleanup of old used_transactions records.
- * Runs with CLEANUP_PROBABILITY chance to avoid overhead.
- */
 function cleanupOldTransactions(
   db: Database.Database,
   retentionDays: number,
   log: PluginLogger
 ): void {
-  if (Math.random() > CLEANUP_PROBABILITY) return; // Skip 90% of the time
+  if (Math.random() > CLEANUP_PROBABILITY) return;
 
   try {
     const cutoff = Math.floor(Date.now() / 1000) - retentionDays * 24 * 60 * 60;
@@ -93,7 +82,6 @@ export function createTonSDK(log: PluginLogger, db: Database.Database | null): T
         throw new PluginSDKError("Amount must be a positive number", "OPERATION_FAILED");
       }
 
-      // Validate address format before attempting transfer
       try {
         const { Address } = await import("@ton/core");
         Address.parse(to);

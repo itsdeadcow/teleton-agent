@@ -14,9 +14,6 @@ export interface TelegramMessage {
   timestamp: number;
 }
 
-/**
- * Store and retrieve Telegram messages
- */
 export class MessageStore {
   constructor(
     private db: Database.Database,
@@ -24,9 +21,6 @@ export class MessageStore {
     private vectorEnabled: boolean
   ) {}
 
-  /**
-   * Ensure chat exists in database
-   */
   private ensureChat(chatId: string, isGroup: boolean = false): void {
     const existing = this.db.prepare(`SELECT id FROM tg_chats WHERE id = ?`).get(chatId);
     if (!existing) {
@@ -36,9 +30,6 @@ export class MessageStore {
     }
   }
 
-  /**
-   * Ensure user exists in database
-   */
   private ensureUser(userId: string): void {
     if (!userId) return;
     const existing = this.db.prepare(`SELECT id FROM tg_users WHERE id = ?`).get(userId);
@@ -47,11 +38,7 @@ export class MessageStore {
     }
   }
 
-  /**
-   * Store a message
-   */
   async storeMessage(message: TelegramMessage): Promise<void> {
-    // Ensure chat and user exist before inserting message (for foreign keys)
     this.ensureChat(message.chatId);
     if (message.senderId) {
       this.ensureUser(message.senderId);
@@ -84,22 +71,17 @@ export class MessageStore {
       );
 
     if (this.vectorEnabled && embedding.length > 0 && message.text) {
-      // vec0 virtual tables don't support INSERT OR REPLACE — delete first
       this.db.prepare(`DELETE FROM tg_messages_vec WHERE id = ?`).run(message.id);
       this.db
         .prepare(`INSERT INTO tg_messages_vec (id, embedding) VALUES (?, ?)`)
         .run(message.id, embeddingBuffer);
     }
 
-    // Update chat last_message_at
     this.db
       .prepare(`UPDATE tg_chats SET last_message_at = ?, last_message_id = ? WHERE id = ?`)
       .run(message.timestamp, message.id, message.chatId);
   }
 
-  /**
-   * Get recent messages from a chat
-   */
   getRecentMessages(chatId: string, limit: number = 20): TelegramMessage[] {
     const rows = this.db
       .prepare(

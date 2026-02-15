@@ -1,8 +1,3 @@
-/**
- * GramJS TelegramClient wrapper
- * Handles session management, authentication, and connection lifecycle
- */
-
 import { TelegramClient, Api } from "telegram";
 import { Logger, LogLevel } from "telegram/extensions/Logger.js";
 import { StringSession } from "telegram/sessions/index.js";
@@ -14,7 +9,6 @@ import { createInterface } from "readline";
 import { markdownToTelegramHtml } from "./formatting.js";
 import { withFloodRetry } from "./flood-retry.js";
 
-/** Prompt the user for input via terminal */
 function promptInput(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
@@ -45,9 +39,6 @@ export interface TelegramUser {
   isBot: boolean;
 }
 
-/**
- * Wrapper around GramJS TelegramClient with simplified API
- */
 export class TelegramUserClient {
   private client: TelegramClient;
   private config: TelegramClientConfig;
@@ -57,11 +48,9 @@ export class TelegramUserClient {
   constructor(config: TelegramClientConfig) {
     this.config = config;
 
-    // Load or create session
     const sessionString = this.loadSession();
     const session = new StringSession(sessionString);
 
-    // Initialize client with silent logger
     const logger = new Logger(LogLevel.NONE);
     this.client = new TelegramClient(session, config.apiId, config.apiHash, {
       connectionRetries: config.connectionRetries ?? 5,
@@ -72,9 +61,6 @@ export class TelegramUserClient {
     });
   }
 
-  /**
-   * Load session from file, or return empty string for new session
-   */
   private loadSession(): string {
     try {
       if (existsSync(this.config.sessionPath)) {
@@ -86,9 +72,6 @@ export class TelegramUserClient {
     return "";
   }
 
-  /**
-   * Save session to file
-   */
   private saveSession(): void {
     try {
       const sessionString = this.client.session.save() as string | undefined;
@@ -108,9 +91,6 @@ export class TelegramUserClient {
     }
   }
 
-  /**
-   * Connect and authenticate
-   */
   async connect(): Promise<void> {
     if (this.connected) {
       console.log("Already connected");
@@ -118,14 +98,11 @@ export class TelegramUserClient {
     }
 
     try {
-      // Check if we have a saved session
       const hasSession = existsSync(this.config.sessionPath);
 
       if (hasSession) {
-        // Connect with existing session
         await this.client.connect();
       } else {
-        // First-time authentication
         console.log("Starting authentication flow...");
         await this.client.start({
           phoneNumber: async () => this.config.phone || (await promptInput("Phone number: ")),
@@ -135,11 +112,9 @@ export class TelegramUserClient {
         });
         console.log("✅ Authenticated");
 
-        // Save session
         this.saveSession();
       }
 
-      // Get own user info
       const me = (await this.client.getMe()) as Api.User;
       this.me = {
         id: BigInt(me.id.toString()),
@@ -157,9 +132,6 @@ export class TelegramUserClient {
     }
   }
 
-  /**
-   * Disconnect from Telegram
-   */
   async disconnect(): Promise<void> {
     if (!this.connected) return;
 
@@ -172,30 +144,18 @@ export class TelegramUserClient {
     }
   }
 
-  /**
-   * Get own user info
-   */
   getMe(): TelegramUser | undefined {
     return this.me;
   }
 
-  /**
-   * Check if connected
-   */
   isConnected(): boolean {
     return this.connected;
   }
 
-  /**
-   * Get the underlying GramJS client
-   */
   getClient(): TelegramClient {
     return this.client;
   }
 
-  /**
-   * Add event handler for new messages
-   */
   addNewMessageHandler(
     handler: (event: NewMessageEvent) => void | Promise<void>,
     filters?: {
@@ -206,7 +166,6 @@ export class TelegramUserClient {
       pattern?: RegExp;
     }
   ): void {
-    // Debug: wrap handler to log all events (only if DEBUG env var set)
     const wrappedHandler = async (event: NewMessageEvent) => {
       if (process.env.DEBUG) {
         const chatId = event.message.chatId?.toString() ?? "unknown";
@@ -220,11 +179,7 @@ export class TelegramUserClient {
     this.client.addEventHandler(wrappedHandler, new NewMessage(filters ?? {}));
   }
 
-  /**
-   * Add callback query handler for inline button clicks
-   */
   addCallbackQueryHandler(handler: (event: any) => Promise<void>): void {
-    // Listen for callback query updates
     this.client.addEventHandler(async (update) => {
       if (
         update.className === "UpdateBotCallbackQuery" ||
@@ -235,9 +190,6 @@ export class TelegramUserClient {
     });
   }
 
-  /**
-   * Answer callback query (for inline button clicks)
-   */
   async answerCallbackQuery(
     queryId: any,
     options?: {
@@ -262,10 +214,6 @@ export class TelegramUserClient {
     }
   }
 
-  /**
-   * Send message to a chat/user
-   * Automatically converts Markdown to Telegram HTML format
-   */
   async sendMessage(
     entity: string | Api.TypePeer,
     options: {
@@ -275,7 +223,6 @@ export class TelegramUserClient {
       parseMode?: "html" | "md" | "md2" | "none";
     }
   ): Promise<Api.Message> {
-    // Convert Markdown to Telegram HTML by default
     const parseMode = options.parseMode ?? "html";
     const formattedMessage =
       parseMode === "html" ? markdownToTelegramHtml(options.message) : options.message;
@@ -291,9 +238,6 @@ export class TelegramUserClient {
     );
   }
 
-  /**
-   * Get messages from a chat
-   */
   async getMessages(
     entity: string | Api.TypePeer,
     options?: {
@@ -310,9 +254,6 @@ export class TelegramUserClient {
     return messages;
   }
 
-  /**
-   * Get dialogs (chats)
-   */
   async getDialogs(): Promise<
     Array<{
       id: bigint;
@@ -330,9 +271,6 @@ export class TelegramUserClient {
     }));
   }
 
-  /**
-   * Set typing indicator
-   */
   async setTyping(entity: string): Promise<void> {
     try {
       await this.client.invoke(
@@ -341,31 +279,24 @@ export class TelegramUserClient {
           action: new Api.SendMessageTypingAction(),
         })
       );
-    } catch (error) {
-      // Ignore typing errors
-    }
+    } catch (error) {}
   }
 
-  /**
-   * Resolve username to user/chat
-   */
   async resolveUsername(username: string): Promise<Api.TypeUser | Api.TypeChat | undefined> {
+    const clean = username.replace("@", "");
     try {
+      // Call ResolveUsername directly — bypasses GramJS's VALID_USERNAME_RE
+      // which rejects collectible usernames shorter than 5 chars.
       const result = await this.client.invoke(
-        new Api.contacts.ResolveUsername({
-          username: username.replace("@", ""),
-        })
+        new Api.contacts.ResolveUsername({ username: clean })
       );
       return result.users[0] || result.chats[0];
-    } catch (error) {
-      console.error(`Failed to resolve username ${username}:`, error);
+    } catch (error: any) {
+      console.error(`Failed to resolve username ${clean}:`, error);
       return undefined;
     }
   }
 
-  /**
-   * Get entity (user/chat) by ID or username
-   */
   async getEntity(entity: string): Promise<Api.TypeUser | Api.TypeChat> {
     return await this.client.getEntity(entity);
   }

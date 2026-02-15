@@ -4,18 +4,10 @@ import { TonClient } from "@ton/ton";
 import { Address } from "@ton/core";
 import { getCachedHttpEndpoint } from "../../../ton/endpoint.js";
 import { formatTransactions } from "../../../ton/format-transactions.js";
-
-/**
- * Parameters for ton_get_transactions tool
- */
 interface GetTransactionsParams {
   address: string;
   limit?: number;
 }
-
-/**
- * Tool definition for ton_get_transactions
- */
 export const tonGetTransactionsTool: Tool = {
   name: "ton_get_transactions",
   description:
@@ -33,10 +25,6 @@ export const tonGetTransactionsTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for ton_get_transactions tool
- */
 export const tonGetTransactionsExecutor: ToolExecutor<GetTransactionsParams> = async (
   params,
   context
@@ -44,7 +32,6 @@ export const tonGetTransactionsExecutor: ToolExecutor<GetTransactionsParams> = a
   try {
     const { address, limit = 10 } = params;
 
-    // Validate address
     let addressObj: Address;
     try {
       addressObj = Address.parse(address);
@@ -55,16 +42,13 @@ export const tonGetTransactionsExecutor: ToolExecutor<GetTransactionsParams> = a
       };
     }
 
-    // Get decentralized endpoint
     const endpoint = await getCachedHttpEndpoint();
     const client = new TonClient({ endpoint });
 
-    // Get transactions
     const transactions = await client.getTransactions(addressObj, {
       limit: Math.min(limit, 50),
     });
 
-    // Format using shared utility
     const formatted = formatTransactions(transactions);
 
     return {

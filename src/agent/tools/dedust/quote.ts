@@ -6,10 +6,6 @@ import { getCachedHttpEndpoint } from "../../../ton/endpoint.js";
 import { Factory, Asset, PoolType, ReadinessStatus } from "@dedust/sdk";
 import { DEDUST_FACTORY_MAINNET, NATIVE_TON_ADDRESS } from "./constants.js";
 import { getDecimals, toUnits, fromUnits } from "./asset-cache.js";
-
-/**
- * Parameters for dedust_quote tool
- */
 interface DedustQuoteParams {
   from_asset: string;
   to_asset: string;
@@ -17,10 +13,6 @@ interface DedustQuoteParams {
   pool_type?: "volatile" | "stable";
   slippage?: number;
 }
-
-/**
- * Tool definition for dedust_quote
- */
 export const dedustQuoteTool: Tool = {
   name: "dedust_quote",
   description:
@@ -50,10 +42,6 @@ export const dedustQuoteTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for dedust_quote tool
- */
 export const dedustQuoteExecutor: ToolExecutor<DedustQuoteParams> = async (
   params,
   context
@@ -61,7 +49,6 @@ export const dedustQuoteExecutor: ToolExecutor<DedustQuoteParams> = async (
   try {
     const { from_asset, to_asset, amount, pool_type = "volatile", slippage = 0.01 } = params;
 
-    // Normalize asset addresses
     const isTonInput = from_asset.toLowerCase() === "ton";
     const isTonOutput = to_asset.toLowerCase() === "ton";
 
@@ -93,26 +80,20 @@ export const dedustQuoteExecutor: ToolExecutor<DedustQuoteParams> = async (
       }
     }
 
-    // Initialize TON client
     const endpoint = await getCachedHttpEndpoint();
     const tonClient = new TonClient({ endpoint });
 
-    // Open factory contract
     const factory = tonClient.open(
       Factory.createFromAddress(Address.parse(DEDUST_FACTORY_MAINNET))
     );
 
-    // Build assets (use normalized addresses)
     const fromAsset = isTonInput ? Asset.native() : Asset.jetton(Address.parse(fromAssetAddr));
     const toAsset = isTonOutput ? Asset.native() : Asset.jetton(Address.parse(toAssetAddr));
 
-    // Get pool type
     const poolTypeEnum = pool_type === "stable" ? PoolType.STABLE : PoolType.VOLATILE;
 
-    // Get pool
     const pool = tonClient.open(await factory.getPool(poolTypeEnum, [fromAsset, toAsset]));
 
-    // Check pool readiness
     const readinessStatus = await pool.getReadinessStatus();
     if (readinessStatus !== ReadinessStatus.READY) {
       return {
@@ -131,7 +112,6 @@ export const dedustQuoteExecutor: ToolExecutor<DedustQuoteParams> = async (
     // Convert amount using correct decimals
     const amountIn = toUnits(amount, fromDecimals);
 
-    // Get estimated output
     const { amountOut, tradeFee } = await pool.getEstimatedSwapOut({
       assetIn: fromAsset,
       amountIn,
@@ -170,7 +150,6 @@ export const dedustQuoteExecutor: ToolExecutor<DedustQuoteParams> = async (
       },
     };
 
-    // Build message
     let message = `DeDust Quote: ${amount} ${fromSymbol} -> ${toSymbol}\n\n`;
     message += `Expected output: ${quote.expectedOutput}\n`;
     message += `Minimum output: ${quote.minOutput} (with ${quote.slippage} slippage)\n`;

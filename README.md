@@ -170,6 +170,12 @@ telegram:
   session_reset_policy:
     daily_reset_enabled: true
     daily_reset_hour: 4
+
+webui:                       # Optional: Web dashboard
+  enabled: false             # Enable WebUI server
+  port: 7777                 # HTTP server port
+  host: "127.0.0.1"          # Localhost only (security)
+  # auth_token: "..."        # Auto-generated if omitted
 ```
 
 ### Environment Variables
@@ -181,6 +187,69 @@ telegram:
 | `TELETON_TG_API_ID` | Telegram API ID (overrides config) | - |
 | `TELETON_TG_API_HASH` | Telegram API Hash (overrides config) | - |
 | `TELETON_TG_PHONE` | Phone number (overrides config) | - |
+| `TELETON_WEBUI_ENABLED` | Enable WebUI (overrides config) | `false` |
+| `TELETON_WEBUI_PORT` | WebUI port (overrides config) | `7777` |
+
+---
+
+## WebUI Dashboard
+
+Teleton includes an **optional web dashboard** for monitoring and configuration. The WebUI is disabled by default and runs only on localhost for security.
+
+### Features
+
+- **Dashboard**: System status, uptime, model info, session count
+- **Tools Management**: View all 116+ tools grouped by module with scope badges
+- **Plugins Browser**: List loaded plugins with manifests
+- **Soul Editor**: Edit SOUL.md, SECURITY.md, STRATEGY.md, MEMORY.md files
+- **Memory Search**: Search knowledge base with hybrid vector+keyword search
+- **Live Logs**: Real-time log streaming via Server-Sent Events
+
+### Usage
+
+**Enable via config.yaml:**
+```yaml
+webui:
+  enabled: true
+  port: 7777
+```
+
+**Enable via CLI flag:**
+```bash
+teleton start --webui
+# or specify custom port
+teleton start --webui --webui-port 8080
+```
+
+**Enable via environment variable:**
+```bash
+TELETON_WEBUI_ENABLED=true teleton start
+```
+
+### Access
+
+When WebUI is enabled, the agent will display:
+```
+🌐 WebUI: http://localhost:7777?token=your-token-here
+🔑 Token: your-token-here
+```
+
+1. Click the URL (token is auto-filled) or visit `http://localhost:7777`
+2. Paste the token from the console (displayed once at startup)
+3. Token is stored in browser localStorage for subsequent visits
+
+### Security
+
+- **Localhost only**: Server binds to `127.0.0.1` by default (not accessible from network)
+- **Bearer token auth**: All API routes require authentication
+- **No persistence**: Runtime changes (like model switches via WebUI) are not saved to config.yaml
+- **For remote access**: Use SSH tunneling or reverse proxy (nginx/caddy) with HTTPS
+
+**SSH tunnel example:**
+```bash
+ssh -L 7777:localhost:7777 user@remote-server
+# Then access http://localhost:7777 on your local machine
+```
 
 ### Workspace Files
 

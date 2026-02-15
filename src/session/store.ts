@@ -1,9 +1,3 @@
-/**
- * Session Store - SQLite backend
- *
- * Migrated from JSON file to SQLite for better scalability (O(1) lookups vs O(n))
- */
-
 import { randomUUID } from "crypto";
 import type { SessionResetPolicy } from "../config/schema.js";
 import { getDatabase } from "../memory/index.js";
@@ -25,17 +19,9 @@ export interface SessionEntry {
 }
 
 export type SessionStore = Record<string, SessionEntry>;
-
-/**
- * Get database connection
- */
 function getDb(): Database.Database {
   return getDatabase().getDb();
 }
-
-/**
- * Convert DB row to SessionEntry
- */
 function rowToSession(row: any): SessionEntry {
   return {
     sessionId: row.id,
@@ -52,10 +38,6 @@ function rowToSession(row: any): SessionEntry {
     lastResetDate: row.last_reset_date,
   };
 }
-
-/**
- * Load sessions from database (for migration/backup compatibility)
- */
 export function loadSessionStore(): SessionStore {
   try {
     const db = getDb();
@@ -73,15 +55,10 @@ export function loadSessionStore(): SessionStore {
     return {};
   }
 }
-
-/**
- * Save sessions to database (for migration/backup compatibility)
- */
 export function saveSessionStore(store: SessionStore): void {
   try {
     const db = getDb();
 
-    // Clear existing sessions and insert all
     db.prepare("DELETE FROM sessions").run();
 
     const insertStmt = db.prepare(`
@@ -112,22 +89,16 @@ export function saveSessionStore(store: SessionStore): void {
     console.error("Failed to save sessions to database:", error);
   }
 }
-
-/**
- * Get or create session for a chat
- */
 export function getOrCreateSession(chatId: string): SessionEntry {
   const db = getDb();
   const sessionKey = `telegram:${chatId}`;
 
-  // Try to get existing session
   const row = db.prepare("SELECT * FROM sessions WHERE chat_id = ?").get(sessionKey) as any;
 
   if (row) {
     return rowToSession(row);
   }
 
-  // Create new session
   const now = Date.now();
   const newSession: SessionEntry = {
     sessionId: randomUUID(),
@@ -159,11 +130,6 @@ export function getOrCreateSession(chatId: string): SessionEntry {
 
   return newSession;
 }
-
-/**
- * Update session metadata
- * Note: sessionId CAN be updated for compaction, but chatId and createdAt cannot
- */
 export function updateSession(
   chatId: string,
   update: Partial<Omit<SessionEntry, "chatId" | "createdAt">>
@@ -171,14 +137,12 @@ export function updateSession(
   const db = getDb();
   const sessionKey = `telegram:${chatId}`;
 
-  // Get existing session or create
   const existing = db.prepare("SELECT * FROM sessions WHERE chat_id = ?").get(sessionKey) as any;
 
   if (!existing) {
     return getOrCreateSession(chatId);
   }
 
-  // Build update query dynamically
   const updates: string[] = [];
   const values: any[] = [];
 
@@ -219,11 +183,9 @@ export function updateSession(
     values.push(update.lastResetDate);
   }
 
-  // Always update updatedAt
   updates.push("updated_at = ?");
   values.push(Date.now());
 
-  // Add WHERE clause
   values.push(sessionKey);
 
   db.prepare(
@@ -234,24 +196,15 @@ export function updateSession(
   `
   ).run(...values);
 
-  // Return updated session
   const updated = db.prepare("SELECT * FROM sessions WHERE chat_id = ?").get(sessionKey) as any;
   return rowToSession(updated);
 }
-
-/**
- * Increment message count for session
- */
 export function incrementMessageCount(chatId: string): void {
   const session = getOrCreateSession(chatId);
   updateSession(chatId, {
     messageCount: session.messageCount + 1,
   });
 }
-
-/**
- * Get session by chat ID
- */
 export function getSession(chatId: string): SessionEntry | null {
   const db = getDb();
   const sessionKey = `telegram:${chatId}`;
@@ -259,10 +212,6 @@ export function getSession(chatId: string): SessionEntry | null {
 
   return row ? rowToSession(row) : null;
 }
-
-/**
- * Reset session (create new sessionId, keep metadata)
- */
 export function resetSession(chatId: string): SessionEntry {
   const oldSession = getSession(chatId);
   const now = Date.now();
@@ -283,7 +232,6 @@ export function resetSession(chatId: string): SessionEntry {
   const db = getDb();
   const sessionKey = `telegram:${chatId}`;
 
-  // Update existing session with new ID and reset counters
   db.prepare(
     `
     UPDATE sessions
@@ -296,25 +244,18 @@ export function resetSession(chatId: string): SessionEntry {
 
   return newSession;
 }
-
-/**
- * Check if session should be reset based on policy
- */
 export function shouldResetSession(session: SessionEntry, policy: SessionResetPolicy): boolean {
   const now = Date.now();
 
-  // Check daily reset policy
   if (policy.daily_reset_enabled) {
     const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
     const lastReset =
       session.lastResetDate || new Date(session.createdAt).toISOString().split("T")[0];
 
     if (lastReset !== today) {
-      // Check if we've passed the reset hour
       const currentHour = new Date().getHours();
       const resetHour = policy.daily_reset_hour;
 
-      // If it's a new day and we're past the reset hour, reset
       if (lastReset < today && currentHour >= resetHour) {
         console.log(
           `📅 Daily reset triggered for session ${session.sessionId} (last reset: ${lastReset})`
@@ -324,7 +265,6 @@ export function shouldResetSession(session: SessionEntry, policy: SessionResetPo
     }
   }
 
-  // Check idle expiry policy
   if (policy.idle_expiry_enabled) {
     const idleMs = now - session.updatedAt;
     const idleMinutes = idleMs / (1000 * 60);
@@ -340,13 +280,9 @@ export function shouldResetSession(session: SessionEntry, policy: SessionResetPo
 
   return false;
 }
-
-/**
- * Reset session and update lastResetDate
- */
 export function resetSessionWithPolicy(chatId: string, policy: SessionResetPolicy): SessionEntry {
   const newSession = resetSession(chatId);
-  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const today = new Date().toISOString().split("T")[0];
 
   return updateSession(chatId, {
     lastResetDate: today,

@@ -2,17 +2,9 @@ import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { fetchWithTimeout } from "../../../utils/fetch.js";
 import { STONFI_API_BASE_URL } from "../../../constants/api-endpoints.js";
-
-/**
- * Parameters for jetton_trending tool
- */
 interface JettonTrendingParams {
   limit?: number;
 }
-
-/**
- * Tool definition for jetton_trending
- */
 export const stonfiTrendingTool: Tool = {
   name: "stonfi_trending",
   description:
@@ -27,10 +19,6 @@ export const stonfiTrendingTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for jetton_trending tool
- */
 export const stonfiTrendingExecutor: ToolExecutor<JettonTrendingParams> = async (
   params,
   context
@@ -75,7 +63,6 @@ export const stonfiTrendingExecutor: ToolExecutor<JettonTrendingParams> = async 
         tags: a.tags?.filter((t: string) => t.includes("liquidity") || t.includes("popular")) || [],
       }));
 
-    // Build message
     let message = `🔥 Top ${trending.length} Trending Jettons:\n\n`;
     trending.forEach((t: any) => {
       const verifiedIcon = t.verified ? "✅" : "";

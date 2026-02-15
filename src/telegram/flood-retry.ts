@@ -1,17 +1,6 @@
-/**
- * FLOOD_WAIT retry wrapper for Telegram MTProto calls.
- *
- * GramJS's built-in floodSleepThreshold handles waits ≤ 60s automatically.
- * This wrapper catches waits > 60s (up to maxWaitSeconds) and retries once.
- */
-
 const DEFAULT_MAX_WAIT_SECONDS = 120;
 const DEFAULT_MAX_RETRIES = 2;
 
-/**
- * Execute a Telegram API call with FLOOD_WAIT retry.
- * Parses the wait duration from the error and sleeps accordingly.
- */
 export async function withFloodRetry<T>(
   fn: () => Promise<T>,
   maxWaitSeconds = DEFAULT_MAX_WAIT_SECONDS,
@@ -23,11 +12,10 @@ export async function withFloodRetry<T>(
     try {
       return await fn();
     } catch (error) {
-      // GramJS FloodWaitError has a .seconds property
       const waitSeconds = (error as any).seconds;
 
       if (typeof waitSeconds !== "number") {
-        throw error; // Not a FLOOD_WAIT — rethrow immediately
+        throw error;
       }
 
       lastError = error as Error;

@@ -2,10 +2,6 @@ import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { fetchWithTimeout } from "../../../utils/fetch.js";
 import { STONFI_API_BASE_URL } from "../../../constants/api-endpoints.js";
-
-/**
- * Parameters for jetton_search tool
- */
 interface JettonSearchParams {
   query: string;
   limit?: number;
@@ -23,10 +19,6 @@ interface SearchResult {
   verified: boolean;
   image: string | null;
 }
-
-/**
- * Tool definition for jetton_search
- */
 export const stonfiSearchTool: Tool = {
   name: "stonfi_search",
   description:
@@ -45,10 +37,6 @@ export const stonfiSearchTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for jetton_search tool
- */
 export const stonfiSearchExecutor: ToolExecutor<JettonSearchParams> = async (
   params,
   context
@@ -151,7 +139,6 @@ export const stonfiSearchExecutor: ToolExecutor<JettonSearchParams> = async (
     // Remove score from output
     const cleanResults: SearchResult[] = topResults.map(({ score, ...rest }) => rest);
 
-    // Build message
     let message = "";
     if (cleanResults.length === 0) {
       message = `No jettons found matching "${query}". Try a different search term.`;

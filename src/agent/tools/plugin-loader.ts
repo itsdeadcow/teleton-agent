@@ -35,10 +35,7 @@ import {
 } from "../../sdk/index.js";
 import type { PluginSDK } from "../../sdk/types.js";
 
-/** Directory for plugin-isolated databases */
 const PLUGIN_DATA_DIR = join(TELETON_ROOT, "plugins", "data");
-
-// ─── Raw Plugin Exports ───────────────────────────────────────────
 
 interface RawPluginExports {
   tools?: SimpleToolDef[] | ((sdk: PluginSDK) => SimpleToolDef[]);
@@ -48,7 +45,6 @@ interface RawPluginExports {
   stop?: () => Promise<void>;
 }
 
-/** Extended context passed to plugin's start() (relaxed types for isolated plugins) */
 interface EnhancedPluginContext extends Omit<PluginContext, "db" | "config"> {
   db: Database.Database | null;
   config: Record<string, unknown>;
@@ -56,19 +52,15 @@ interface EnhancedPluginContext extends Omit<PluginContext, "db" | "config"> {
   log: (...args: unknown[]) => void;
 }
 
-// ─── Plugin Adaptation ────────────────────────────────────────────
+// ─── Plugin Adapter ─────────────────────────────────────────────────
 
-/**
- * Adapt a raw plugin module into a PluginModule with full lifecycle.
- */
-function adaptPlugin(
+export function adaptPlugin(
   raw: RawPluginExports,
   entryName: string,
   config: Config,
   loadedModuleNames: string[],
   sdkDeps: SDKDependencies
 ): PluginModule {
-  // ── Resolve manifest (optional) ──
   let manifest: PluginManifest | null = null;
   if (raw.manifest) {
     try {
@@ -84,7 +76,6 @@ function adaptPlugin(
   const pluginName = manifest?.name ?? entryName.replace(/\.js$/, "");
   const pluginVersion = manifest?.version ?? "0.0.0";
 
-  // ── Validate dependencies ──
   if (manifest?.dependencies) {
     for (const dep of manifest.dependencies) {
       if (!loadedModuleNames.includes(dep)) {
@@ -93,7 +84,6 @@ function adaptPlugin(
     }
   }
 
-  // ── Validate SDK version compatibility ──
   if (manifest?.sdkVersion) {
     if (!semverSatisfies(SDK_VERSION, manifest.sdkVersion)) {
       throw new Error(
@@ -102,31 +92,24 @@ function adaptPlugin(
     }
   }
 
-  // ── Resolve plugin config ──
   const pluginConfigKey = pluginName.replace(/-/g, "_");
   const rawPluginConfig = (config.plugins?.[pluginConfigKey] as Record<string, unknown>) ?? {};
   const pluginConfig = { ...manifest?.defaultConfig, ...rawPluginConfig };
 
-  // ── Logging ──
   const log = (...args: unknown[]) => console.log(`[${pluginName}]`, ...args);
 
-  // ── DB management (only if migrate is exported) ──
   const hasMigrate = typeof raw.migrate === "function";
   let pluginDb: Database.Database | null = null;
   const getDb = () => pluginDb;
   const withPluginDb = createDbWrapper(getDb, pluginName);
 
-  // ── Sanitized config for SDK ──
   const sanitizedConfig = sanitizeConfigForPlugins(config);
 
-  // ── Build the PluginModule ──
   return {
     name: pluginName,
     version: pluginVersion,
 
-    configure() {
-      // Config merge already handled above
-    },
+    configure() {},
 
     migrate() {
       if (!hasMigrate) return;
@@ -136,7 +119,6 @@ function adaptPlugin(
         pluginDb = openModuleDb(dbPath);
         raw.migrate!(pluginDb);
 
-        // One-time migration of legacy data from memory.db (skips if tables already have data)
         const pluginTables = (
           pluginDb
             .prepare(
@@ -152,7 +134,6 @@ function adaptPlugin(
           `❌ [${pluginName}] migrate() failed:`,
           err instanceof Error ? err.message : err
         );
-        // Close DB if migration failed
         if (pluginDb) {
           try {
             pluginDb.close();
@@ -166,10 +147,8 @@ function adaptPlugin(
 
     tools() {
       try {
-        // Resolve tools (array or function)
         let toolDefs: SimpleToolDef[];
         if (typeof raw.tools === "function") {
-          // Create full Plugin SDK with TON, Telegram, and infrastructure services
           const sdk = createPluginSDK(sdkDeps, {
             pluginName,
             db: pluginDb,
@@ -183,12 +162,9 @@ function adaptPlugin(
           return [];
         }
 
-        // Validate
         const validDefs = validateToolDefs(toolDefs, pluginName);
 
-        // Adapt to ToolEntry format
         return validDefs.map((def) => {
-          // Wrap plugin executor to sanitize config before passing context
           const rawExecutor = def.execute as ToolExecutor;
           const sandboxedExecutor: ToolExecutor = (params, context) => {
             const sanitizedContext = {
@@ -225,11 +201,10 @@ function adaptPlugin(
       if (!raw.start) return;
 
       try {
-        // Build sanitized context for external plugins (do NOT spread raw context)
         const enhancedContext: EnhancedPluginContext = {
           bridge: context.bridge,
-          db: pluginDb ?? null, // Enforce DB isolation
-          config: sanitizedConfig, // Use pre-sanitized config
+          db: pluginDb ?? null,
+          config: sanitizedConfig,
           pluginConfig,
           log,
         };
@@ -251,7 +226,6 @@ function adaptPlugin(
           err instanceof Error ? err.message : err
         );
       } finally {
-        // Always close the plugin DB
         if (pluginDb) {
           try {
             pluginDb.close();
@@ -265,15 +239,8 @@ function adaptPlugin(
   };
 }
 
-// ─── Discovery & Loading ──────────────────────────────────────────
+// ─── Initial Plugin Loading ─────────────────────────────────────────
 
-/**
- * Discover, load, and adapt external plugins into PluginModule objects.
- *
- * @param config Full app config
- * @param loadedModuleNames Names of already-loaded built-in modules (for dependency checks)
- * @returns Array of adapted PluginModules ready for lifecycle management
- */
 export async function loadEnhancedPlugins(
   config: Config,
   loadedModuleNames: string[],
@@ -289,14 +256,15 @@ export async function loadEnhancedPlugins(
   const modules: PluginModule[] = [];
   const loadedNames = new Set<string>();
 
+  // Phase 1: Discover plugin paths (synchronous)
+  const pluginPaths: Array<{ entry: string; path: string }> = [];
+
   for (const entry of entries) {
-    // Skip the data directory (plugin DBs)
     if (entry === "data") continue;
 
     const entryPath = join(pluginsDir, entry);
     let modulePath: string | null = null;
 
-    // Determine module path: file.js or folder/index.js
     try {
       const stat = statSync(entryPath);
       if (stat.isFile() && entry.endsWith(".js")) {
@@ -311,23 +279,40 @@ export async function loadEnhancedPlugins(
       continue;
     }
 
-    if (!modulePath) continue;
+    if (modulePath) {
+      pluginPaths.push({ entry, path: modulePath });
+    }
+  }
+
+  // Phase 2: Load plugins in parallel
+  const loadResults = await Promise.allSettled(
+    pluginPaths.map(async ({ entry, path }) => {
+      const moduleUrl = pathToFileURL(path).href;
+      const mod = (await import(moduleUrl)) as RawPluginExports;
+      return { entry, mod };
+    })
+  );
+
+  // Phase 3: Validate and adapt plugins (sequential for consistency)
+  for (const result of loadResults) {
+    if (result.status === "rejected") {
+      console.error(
+        `❌ Plugin failed to load:`,
+        result.reason instanceof Error ? result.reason.message : result.reason
+      );
+      continue;
+    }
+
+    const { entry, mod } = result.value;
 
     try {
-      // Dynamic import requires file:// URL
-      const moduleUrl = pathToFileURL(modulePath).href;
-      const mod = (await import(moduleUrl)) as RawPluginExports;
-
-      // Validate: tools must be exported (array or function)
       if (!mod.tools || (typeof mod.tools !== "function" && !Array.isArray(mod.tools))) {
         console.warn(`⚠️  Plugin "${entry}": no 'tools' array or function exported, skipping`);
         continue;
       }
 
-      // Adapt into PluginModule
       const adapted = adaptPlugin(mod, entry, config, loadedModuleNames, sdkDeps);
 
-      // Check for duplicate plugin names
       if (loadedNames.has(adapted.name)) {
         console.warn(
           `⚠️  Plugin "${adapted.name}" already loaded, skipping duplicate from "${entry}"`
@@ -339,7 +324,7 @@ export async function loadEnhancedPlugins(
       modules.push(adapted);
     } catch (err) {
       console.error(
-        `❌ Plugin "${entry}" failed to load:`,
+        `❌ Plugin "${entry}" failed to adapt:`,
         err instanceof Error ? err.message : err
       );
     }

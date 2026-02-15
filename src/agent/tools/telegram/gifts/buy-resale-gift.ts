@@ -34,6 +34,14 @@ export const telegramBuyResaleGiftExecutor: ToolExecutor<BuyResaleGiftParams> = 
     const { odayId } = params;
     const gramJsClient = context.bridge.getClient().getClient();
 
+    if (!(Api as any).InputInvoiceStarGiftResale) {
+      return {
+        success: false,
+        error:
+          "Resale gift purchasing is not supported in the current Telegram API layer. A GramJS update is required.",
+      };
+    }
+
     // Get payment form for the resale gift
     const stargiftInput = new (Api as any).InputSavedStarGiftUser({
       odayId: BigInt(odayId),

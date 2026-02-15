@@ -22,13 +22,10 @@ export function loadModules(
 
   for (const mod of BUILTIN_MODULES) {
     try {
-      // 1. Configure ALWAYS (even if module disabled)
       mod.configure?.(config);
 
-      // 2. Migrate ALWAYS (idempotent — IF NOT EXISTS)
       mod.migrate?.(db);
 
-      // 3. Register tools only if the module returns any
       const tools = mod.tools(config);
       for (const { tool, executor, scope } of tools) {
         registry.register(tool, executor, scope);

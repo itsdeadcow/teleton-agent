@@ -1,6 +1,9 @@
 {
   "name": "teleton",
   "version": "0.4.0",
+  "workspaces": [
+    "packages/*"
+  ],
   "description": "Personal AI Agent for Telegram",
   "author": "ZKProof (https://t.me/zkproof)",
   "license": "MIT",
@@ -33,10 +36,15 @@
     "src/templates/"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "npm run build:sdk && npm run build:backend && npm run build:web",
+    "build:sdk": "npm run build -w @teleton-agent/sdk",
+    "build:backend": "tsup --config tsup.config.ts",
+    "build:web": "cd web && npm run build",
+    "prestart": "npm run build",
     "start": "node dist/cli/index.js start",
     "dev": "tsx watch src/index.ts",
     "dev:cli": "tsx src/cli/index.ts",
+    "dev:web": "cd web && npm run dev",
     "setup": "node dist/cli/index.js setup",
     "doctor": "node dist/cli/index.js doctor",
     "lint": "eslint src --ext .ts",
@@ -51,6 +59,7 @@
     "@clack/prompts": "^0.7.0",
     "@dedust/sdk": "^0.8.7",
     "@evaafi/sdk": "^0.9.5",
+    "@hono/node-server": "^1.19.9",
     "@huggingface/transformers": "^3.8.1",
     "@mariozechner/pi-ai": "^0.50.9",
     "@orbs-network/ton-access": "^2.3.3",
@@ -60,9 +69,11 @@
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^16.1.0",
     "better-sqlite3": "^11.7.0",
+    "chokidar": "^5.0.0",
     "commander": "^12.0.0",
     "crypto-js": "^4.2.0",
     "grammy": "^1.39.3",
+    "hono": "^4.11.9",
     "js-tiktoken": "^1.0.21",
     "playwright": "^1.58.1",
     "sqlite-vec": "^0.1.7-alpha.2",

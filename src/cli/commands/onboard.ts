@@ -1,5 +1,5 @@
 /**
- * Tonnet Onboarding Wizard
+ * Teleton Onboarding Wizard
  */
 
 import { createPrompter, CancelledError } from "../prompts.js";
@@ -188,7 +188,7 @@ ${blue}  ┌──────────────────────�
   if (providerMeta.toolLimit !== null) {
     prompter.note(
       `${providerMeta.displayName} supports max ${providerMeta.toolLimit} tools.\n` +
-        "Tonnet currently has ~116 tools. If more tools are added,\n" +
+        "Teleton currently has ~116 tools. If more tools are added,\n" +
         "some may be truncated.",
       "Tool Limit"
     );
@@ -537,7 +537,7 @@ ${blue}  ┌──────────────────────�
       api_id: apiId,
       api_hash: apiHash,
       phone,
-      session_name: "tonnet_session",
+      session_name: "teleton_session",
       session_path: workspace.sessionPath,
       dm_policy: dmPolicy,
       allow_from: [],
@@ -567,6 +567,14 @@ ${blue}  ┌──────────────────────�
       sell_min_floor_percent: sellMinFloorPercent,
     }),
     market: MarketConfigSchema.parse({ enabled: marketEnabled }),
+    webui: {
+      enabled: false,
+      port: 7777,
+      host: "127.0.0.1",
+      cors_origins: ["http://localhost:5173", "http://localhost:7777"],
+      log_requests: false,
+    },
+    dev: { hot_reload: false },
     plugins: {},
     tonapi_key: tonapiKey,
   };
@@ -767,7 +775,7 @@ async function runNonInteractiveOnboarding(
       api_id: options.apiId,
       api_hash: options.apiHash,
       phone: options.phone,
-      session_name: "tonnet_session",
+      session_name: "teleton_session",
       session_path: workspace.sessionPath,
       dm_policy: "open",
       allow_from: [],
@@ -793,6 +801,14 @@ async function runNonInteractiveOnboarding(
     },
     deals: DealsConfigSchema.parse({}),
     market: MarketConfigSchema.parse({}),
+    webui: {
+      enabled: false,
+      port: 7777,
+      host: "127.0.0.1",
+      cors_origins: ["http://localhost:5173", "http://localhost:7777"],
+      log_requests: false,
+    },
+    dev: { hot_reload: false },
     plugins: {},
   };
 

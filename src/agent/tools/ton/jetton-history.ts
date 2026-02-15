@@ -3,16 +3,10 @@ import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { fetchWithTimeout } from "../../../utils/fetch.js";
 import { GECKOTERMINAL_API_URL, tonapiFetch } from "../../../constants/api-endpoints.js";
 
-/**
- * Parameters for jetton_history tool
- */
 interface JettonHistoryParams {
   jetton_address: string;
 }
 
-/**
- * Tool definition for jetton_history
- */
 export const jettonHistoryTool: Tool = {
   name: "jetton_history",
   description:
@@ -24,9 +18,6 @@ export const jettonHistoryTool: Tool = {
   }),
 };
 
-/**
- * Executor for jetton_history tool
- */
 export const jettonHistoryExecutor: ToolExecutor<JettonHistoryParams> = async (
   params,
   context
@@ -34,20 +25,15 @@ export const jettonHistoryExecutor: ToolExecutor<JettonHistoryParams> = async (
   try {
     const { jetton_address } = params;
 
-    // Fetch from multiple sources for comprehensive data
-
-    // 1. TonAPI rates for price changes
     const ratesResponse = await tonapiFetch(
       `/rates?tokens=${encodeURIComponent(jetton_address)}&currencies=usd,ton`
     );
 
-    // 2. GeckoTerminal for volume and market data
     const geckoResponse = await fetchWithTimeout(
       `${GECKOTERMINAL_API_URL}/networks/ton/tokens/${jetton_address}`,
       { headers: { Accept: "application/json" } }
     );
 
-    // 3. TonAPI for jetton metadata
     const infoResponse = await tonapiFetch(`/jettons/${jetton_address}`);
 
     let symbol = "TOKEN";
@@ -61,7 +47,6 @@ export const jettonHistoryExecutor: ToolExecutor<JettonHistoryParams> = async (
       holdersCount = infoData.holders_count || 0;
     }
 
-    // Parse TonAPI rates
     let priceUSD: number | null = null;
     let priceTON: number | null = null;
     let change24h: string | null = null;
@@ -80,7 +65,6 @@ export const jettonHistoryExecutor: ToolExecutor<JettonHistoryParams> = async (
       }
     }
 
-    // Parse GeckoTerminal data
     let volume24h: string | null = null;
     let fdv: string | null = null;
     let marketCap: string | null = null;
@@ -105,7 +89,6 @@ export const jettonHistoryExecutor: ToolExecutor<JettonHistoryParams> = async (
       }
     }
 
-    // Build history data
     const history = {
       symbol,
       name,
@@ -123,7 +106,6 @@ export const jettonHistoryExecutor: ToolExecutor<JettonHistoryParams> = async (
       holders: holdersCount,
     };
 
-    // Build message
     let message = `📊 ${name} (${symbol}) Price History\n\n`;
     message += `Current Price: ${history.currentPrice}\n`;
     message += `Price in TON: ${history.currentPriceTON}\n\n`;

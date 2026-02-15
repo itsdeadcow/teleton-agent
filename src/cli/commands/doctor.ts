@@ -1,7 +1,3 @@
-/**
- * Teleton Doctor - Health check command
- */
-
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";

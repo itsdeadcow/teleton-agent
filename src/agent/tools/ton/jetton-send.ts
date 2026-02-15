@@ -9,20 +9,12 @@ import { tonapiFetch } from "../../../constants/api-endpoints.js";
 
 // Jetton transfer op code (TEP-74)
 const JETTON_TRANSFER_OP = 0xf8a7ea5;
-
-/**
- * Parameters for jetton_send tool
- */
 interface JettonSendParams {
   jetton_address: string;
   to: string;
   amount: number;
   comment?: string;
 }
-
-/**
- * Tool definition for jetton_send
- */
 export const jettonSendTool: Tool = {
   name: "jetton_send",
   description:
@@ -45,10 +37,6 @@ export const jettonSendTool: Tool = {
     ),
   }),
 };
-
-/**
- * Executor for jetton_send tool
- */
 export const jettonSendExecutor: ToolExecutor<JettonSendParams> = async (
   params,
   context
@@ -56,7 +44,6 @@ export const jettonSendExecutor: ToolExecutor<JettonSendParams> = async (
   try {
     const { jetton_address, to, amount, comment } = params;
 
-    // Load wallet
     const walletData = loadWallet();
     if (!walletData) {
       return {
@@ -65,7 +52,6 @@ export const jettonSendExecutor: ToolExecutor<JettonSendParams> = async (
       };
     }
 
-    // Validate recipient address
     try {
       Address.parse(to);
     } catch {
@@ -140,7 +126,6 @@ export const jettonSendExecutor: ToolExecutor<JettonSendParams> = async (
       .storeMaybeRef(comment ? forwardPayload : null) // forward_payload
       .endCell();
 
-    // Prepare wallet
     const keyPair = await mnemonicToPrivateKey(walletData.mnemonic);
     const wallet = WalletContractV5R1.create({
       workchain: 0,

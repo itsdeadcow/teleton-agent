@@ -41,6 +41,14 @@ export const telegramSetCollectiblePriceExecutor: ToolExecutor<SetCollectiblePri
     const { odayId, price } = params;
     const gramJsClient = context.bridge.getClient().getClient();
 
+    if (!(Api.payments as any).UpdateStarGiftPrice) {
+      return {
+        success: false,
+        error:
+          "Setting collectible prices is not supported in the current Telegram API layer. A GramJS update is required.",
+      };
+    }
+
     const isListing = price !== undefined && price > 0;
 
     await gramJsClient.invoke(

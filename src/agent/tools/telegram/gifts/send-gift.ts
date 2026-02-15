@@ -51,8 +51,6 @@ export const telegramSendGiftExecutor: ToolExecutor<SendGiftParams> = async (
   try {
     const { userId, giftId, message, anonymous = false } = params;
 
-    // SECURITY: Check if there's a verified deal authorizing this gift send
-    // This prevents social engineering attacks where users trick the agent into sending gifts
     if (!hasVerifiedDeal(giftId, userId)) {
       return {
         success: false,
@@ -62,10 +60,8 @@ export const telegramSendGiftExecutor: ToolExecutor<SendGiftParams> = async (
 
     const gramJsClient = context.bridge.getClient().getClient();
 
-    // Get user entity
     const user = await gramJsClient.getEntity(userId);
 
-    // Get payment form for the gift
     const invoiceData = {
       peer: user,
       giftId: BigInt(giftId),
@@ -79,7 +75,6 @@ export const telegramSendGiftExecutor: ToolExecutor<SendGiftParams> = async (
       })
     );
 
-    // Send the payment
     await gramJsClient.invoke(
       new Api.payments.SendStarsForm({
         formId: form.formId,

@@ -114,18 +114,12 @@ export const telegramGetMyGiftsExecutor: ToolExecutor<GetMyGiftsParams> = async 
     } = params;
     const gramJsClient = context.bridge.getClient().getClient();
 
-    // Determine whose gifts to view:
-    // 1. viewSender=true -> use context.senderId (the person who sent the message)
-    // 2. userId provided -> use that specific user
-    // 3. neither -> view agent's own gifts
     const targetUserId = viewSender ? context.senderId.toString() : userId;
 
-    // Get peer (self or specified user)
     const peer = targetUserId
       ? await gramJsClient.getEntity(targetUserId)
       : new Api.InputPeerSelf();
 
-    // Get catalog to enrich gift info (cached with TTL + incremental hash)
     let catalogMap: Map<string, any>;
     if (giftCatalogCache && Date.now() < giftCatalogCache.expiresAt) {
       catalogMap = giftCatalogCache.map;
@@ -136,7 +130,6 @@ export const telegramGetMyGiftsExecutor: ToolExecutor<GetMyGiftsParams> = async 
       );
 
       if (catalog.gifts && catalog.gifts.length > 0) {
-        // New or updated catalog
         catalogMap = new Map();
         for (const catalogGift of catalog.gifts) {
           const id = catalogGift.id?.toString();
@@ -156,7 +149,6 @@ export const telegramGetMyGiftsExecutor: ToolExecutor<GetMyGiftsParams> = async 
           expiresAt: Date.now() + CATALOG_CACHE_TTL_MS,
         };
       } else {
-        // Hash unchanged or empty response — reuse cached map
         catalogMap = giftCatalogCache?.map ?? new Map();
         giftCatalogCache = {
           map: catalogMap,
@@ -181,14 +173,11 @@ export const telegramGetMyGiftsExecutor: ToolExecutor<GetMyGiftsParams> = async 
       const gift = savedGift.gift;
       const isCollectible = gift?.className === "StarGiftUnique";
 
-      // For collectibles, use giftId to lookup original type
       const lookupId = isCollectible ? gift.giftId?.toString() : gift.id?.toString();
       const catalogInfo = catalogMap.get(lookupId);
 
-      // A gift is limited if it's a collectible OR catalog says it's limited
       const isLimited = isCollectible || catalogInfo?.limited === true;
 
-      // Extract only essential attribute info to reduce response size
       const extractAttrSummary = (attr: any) =>
         attr
           ? {
@@ -199,28 +188,23 @@ export const telegramGetMyGiftsExecutor: ToolExecutor<GetMyGiftsParams> = async 
             }
           : null;
 
-      // Build compact gift object
       const compactGift: Record<string, any> = {
         date: savedGift.date,
         isLimited,
         isCollectible,
         stars: gift?.stars?.toString(),
         emoji: catalogInfo?.emoji || null,
-        // IDs needed for transfer/actions (msgId for user gifts, savedId for chat gifts)
         msgId: savedGift.msgId,
         savedId: savedGift.savedId?.toString(),
-        // Transfer cost in Stars (if set, transfer requires payment; if null, transfer is free)
         transferStars: savedGift.transferStars?.toString() || null,
       };
 
-      // Add collectible-specific fields only if it's a collectible
       if (isCollectible) {
         compactGift.collectibleId = gift.id?.toString(); // Used for emoji status
         compactGift.title = gift.title;
         compactGift.num = gift.num;
         compactGift.slug = gift.slug;
         compactGift.nftLink = `t.me/nft/${gift.slug}`;
-        // Compact attribute summary
         const modelAttr = gift.attributes?.find(
           (a: any) => a.className === "StarGiftAttributeModel"
         );
@@ -234,14 +218,12 @@ export const telegramGetMyGiftsExecutor: ToolExecutor<GetMyGiftsParams> = async 
         compactGift.pattern = extractAttrSummary(patternAttr);
         compactGift.backdrop = extractAttrSummary(backdropAttr);
       } else {
-        // Non-collectible: add upgrade info
         compactGift.canUpgrade = savedGift.canUpgrade || false;
         if (savedGift.canUpgrade) {
           compactGift.upgradeStars = gift?.upgradeStars?.toString();
         }
       }
 
-      // Add limited edition info if applicable
       if (isLimited && !isCollectible) {
         compactGift.availabilityRemains =
           catalogInfo?.availabilityRemains || gift?.availabilityRemains;
@@ -251,12 +233,10 @@ export const telegramGetMyGiftsExecutor: ToolExecutor<GetMyGiftsParams> = async 
       return compactGift;
     });
 
-    // Categorize gifts
     const limited = gifts.filter((g: any) => g.isLimited);
     const unlimited = gifts.filter((g: any) => !g.isLimited);
     const collectibles = gifts.filter((g: any) => g.isCollectible);
 
-    // Log for debugging
     const viewingLabel = viewSender ? `sender (${context.senderId})` : userId || "self";
     console.log(
       `📦 get_my_gifts: viewing ${viewingLabel}, found ${gifts.length} gifts (${collectibles.length} collectibles)`

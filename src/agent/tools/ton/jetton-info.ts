@@ -2,16 +2,10 @@ import { Type } from "@sinclair/typebox";
 import type { Tool, ToolExecutor, ToolResult } from "../types.js";
 import { tonapiFetch } from "../../../constants/api-endpoints.js";
 
-/**
- * Parameters for jetton_info tool
- */
 interface JettonInfoParams {
   jetton_address: string;
 }
 
-/**
- * Tool definition for jetton_info
- */
 export const jettonInfoTool: Tool = {
   name: "jetton_info",
   description:
@@ -23,9 +17,6 @@ export const jettonInfoTool: Tool = {
   }),
 };
 
-/**
- * Executor for jetton_info tool
- */
 export const jettonInfoExecutor: ToolExecutor<JettonInfoParams> = async (
   params,
   context
@@ -33,7 +24,6 @@ export const jettonInfoExecutor: ToolExecutor<JettonInfoParams> = async (
   try {
     const { jetton_address } = params;
 
-    // Fetch jetton info from TonAPI
     const response = await tonapiFetch(`/jettons/${jetton_address}`);
 
     if (response.status === 404) {
@@ -53,14 +43,12 @@ export const jettonInfoExecutor: ToolExecutor<JettonInfoParams> = async (
     const data = await response.json();
     const metadata = data.metadata || {};
 
-    // Format total supply
     const decimals = parseInt(metadata.decimals || "9");
     const totalSupplyRaw = BigInt(data.total_supply || "0");
     const divisor = BigInt(10 ** decimals);
     const totalSupplyWhole = totalSupplyRaw / divisor;
     const totalSupplyFormatted = formatLargeNumber(Number(totalSupplyWhole));
 
-    // Build response
     const jettonInfo = {
       name: metadata.name || "Unknown",
       symbol: metadata.symbol || "UNKNOWN",
@@ -76,7 +64,6 @@ export const jettonInfoExecutor: ToolExecutor<JettonInfoParams> = async (
       admin: data.admin?.address || null,
     };
 
-    // Build human-readable message
     const verificationIcon =
       jettonInfo.verification === "whitelist"
         ? "✅"
@@ -113,9 +100,6 @@ export const jettonInfoExecutor: ToolExecutor<JettonInfoParams> = async (
   }
 };
 
-/**
- * Format large numbers with K, M, B suffixes
- */
 function formatLargeNumber(num: number): string {
   if (num >= 1_000_000_000) {
     return (num / 1_000_000_000).toFixed(2) + "B";

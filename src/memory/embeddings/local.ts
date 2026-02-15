@@ -1,7 +1,6 @@
 import { pipeline, type FeatureExtractionPipeline } from "@huggingface/transformers";
 import type { EmbeddingProvider } from "./provider.js";
 
-// Singleton pipeline — loads model on first call, reuses thereafter
 let extractorPromise: Promise<FeatureExtractionPipeline> | null = null;
 
 function getExtractor(model: string): Promise<FeatureExtractionPipeline> {
@@ -18,9 +17,8 @@ function getExtractor(model: string): Promise<FeatureExtractionPipeline> {
 }
 
 /**
- * Local embedding provider using @huggingface/transformers (ONNX Runtime)
- * Runs entirely offline — no API key, no network calls after first model download.
- * Model is cached at ~/.cache/huggingface/ (~22 MB for all-MiniLM-L6-v2).
+ * Local embedding provider using @huggingface/transformers (ONNX Runtime).
+ * Runs offline after initial model download (~22 MB cached at ~/.cache/huggingface/).
  */
 export class LocalEmbeddingProvider implements EmbeddingProvider {
   readonly id = "local";
@@ -29,7 +27,7 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
 
   constructor(config: { model?: string }) {
     this.model = config.model || "Xenova/all-MiniLM-L6-v2";
-    this.dimensions = 384; // all-MiniLM-L6-v2 output dimensions
+    this.dimensions = 384;
   }
 
   async embedQuery(text: string): Promise<number[]> {
