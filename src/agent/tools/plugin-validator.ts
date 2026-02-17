@@ -30,6 +30,7 @@ const ManifestSchema = z.object({
       z.object({
         required: z.boolean(),
         description: z.string().max(256),
+        env: z.string().max(128).optional(),
       })
     )
     .optional(),

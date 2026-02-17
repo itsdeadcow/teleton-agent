@@ -12,7 +12,7 @@
  * Each plugin is adapted into a PluginModule for unified lifecycle management.
  */
 
-import { readdirSync, existsSync, statSync } from "fs";
+import { readdirSync, readFileSync, existsSync, statSync } from "fs";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import { execFile } from "child_process";
@@ -80,6 +80,7 @@ export function adaptPlugin(
   sdkDeps: SDKDependencies
 ): PluginModuleWithHooks {
   let manifest: PluginManifest | null = null;
+
   if (raw.manifest) {
     try {
       manifest = validateManifest(raw.manifest);
@@ -88,6 +89,31 @@ export function adaptPlugin(
         `⚠️  [${entryName}] invalid manifest, ignoring:`,
         err instanceof Error ? err.message : err
       );
+    }
+  }
+
+  // Fallback: read version from manifest.json on disk (display names / object authors
+  // don't pass Zod validation, but we still need the version for marketplace comparison)
+  if (!manifest) {
+    const manifestPath = join(WORKSPACE_PATHS.PLUGINS_DIR, entryName, "manifest.json");
+    try {
+      if (existsSync(manifestPath)) {
+        const diskManifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+        if (diskManifest && typeof diskManifest.version === "string") {
+          manifest = {
+            name: entryName,
+            version: diskManifest.version,
+            description:
+              typeof diskManifest.description === "string" ? diskManifest.description : undefined,
+            author:
+              typeof diskManifest.author === "string"
+                ? diskManifest.author
+                : (diskManifest.author?.name ?? undefined),
+          };
+        }
+      }
+    } catch {
+      // ignore read/parse errors
     }
   }
 

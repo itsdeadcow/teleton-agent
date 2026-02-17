@@ -960,6 +960,8 @@ export interface SecretDeclaration {
   required: boolean;
   /** Human-readable description shown when prompting admin */
   description: string;
+  /** Environment variable name (e.g. "SWIFTGIFTS_API_KEY") */
+  env?: string;
 }
 
 /**

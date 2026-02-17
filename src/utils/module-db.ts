@@ -114,9 +114,29 @@ export function migrateFromMainDb(moduleDb: Database.Database, tables: string[])
         };
         if (src.c === 0) continue;
 
-        moduleDb.exec(`INSERT OR IGNORE INTO ${table} SELECT * FROM main_db.${table}`);
+        // Use shared columns only (schemas may differ between main DB and plugin DB)
+        const dstCols = moduleDb
+          .prepare(`PRAGMA table_info(${table})`)
+          .all()
+          .map((r: any) => r.name as string);
+        const srcCols = moduleDb
+          .prepare(`PRAGMA main_db.table_info(${table})`)
+          .all()
+          .map((r: any) => r.name as string);
+        const shared = dstCols.filter((c) => srcCols.includes(c));
+        if (shared.length === 0) continue;
+        const cols = shared.join(", ");
+        moduleDb.exec(
+          `INSERT OR IGNORE INTO ${table} (${cols}) SELECT ${cols} FROM main_db.${table}`
+        );
         totalMigrated += src.c;
-        console.log(`  📦 Migrated ${src.c} rows from memory.db → ${table}`);
+        // Clean up: drop the source table from memory.db so migration never re-runs
+        try {
+          moduleDb.exec(`DROP TABLE main_db.${table}`);
+        } catch {
+          // ignore if drop fails (e.g. read-only)
+        }
+        console.log(`  📦 Migrated ${src.c} rows from memory.db → ${table} (source dropped)`);
       } catch (e) {
         console.warn(`  ⚠️ Could not migrate table ${table}:`, e);
       }
