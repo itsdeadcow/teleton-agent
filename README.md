@@ -12,19 +12,19 @@
 
 ---
 
-<p align="center">Teleton is an autonomous AI agent platform that operates as a real Telegram user account (not a bot). It thinks through an agentic loop with tool calling, remembers conversations across sessions with hybrid RAG, and can operate a TON wallet: send crypto, swap on DEXs, bid on domains, verify payments. All from a chat message. It ships with 114 built-in tools, supports 6 LLM providers, and exposes a Plugin SDK so you can build your own tools on top of the platform.</p>
+<p align="center">Teleton is an autonomous AI agent platform that operates as a real Telegram user account (not a bot). It thinks through an agentic loop with tool calling, remembers conversations across sessions with hybrid RAG, and natively integrates the TON blockchain: send crypto, swap on DEXs, bid on domains, verify payments - all from a chat message. It can schedule tasks to run autonomously at any time. It ships with 114 built-in tools, supports 6 LLM providers, and exposes a Plugin SDK so you can build your own tools on top of the platform.</p>
 
-	### Key Highlights
+### Key Highlights
 
-	- **Full Telegram access**: Operates as a real user via MTProto (GramJS), not a limited bot
-	- **Agentic loop**: Up to 5 iterations of tool calling per message — the agent thinks, acts, observes, and repeats
-	- **Multi-Provider LLM**: Anthropic, OpenAI, Google Gemini, xAI Grok, Groq, OpenRouter
-	- **TON Blockchain**: Built-in W5R1 wallet, send/receive TON & jettons, swap on STON.fi and DeDust, NFTs, DNS domains
-	- **Persistent memory**: Hybrid RAG (sqlite-vec + FTS5), auto-compaction with AI summarization, daily logs
-	- **114 built-in tools**: Messaging, media, blockchain, DEX trading, deals, DNS, journaling, and more
-	- **Plugin SDK**: Extend the agent with custom tools — frozen SDK with isolated databases, secrets management, lifecycle hooks
-	- **MCP Client**: Connect external tool servers (stdio/SSE) with 2 lines of YAML — no code, no rebuild
-	- **Secure by design**: Prompt injection defense, sandboxed workspace, plugin isolation, wallet encryption
+- **Full Telegram access** - Operates as a real user via MTProto (GramJS), not a limited bot
+- **Agentic loop** - Up to 5 iterations of tool calling per message, the agent thinks, acts, observes, and repeats
+- **Multi-Provider LLM** - Anthropic, OpenAI, Google Gemini, xAI Grok, Groq, OpenRouter
+- **TON Blockchain** - Built-in W5R1 wallet, send/receive TON & jettons, swap on STON.fi and DeDust, NFTs, DNS domains
+- **Persistent memory** - Hybrid RAG (sqlite-vec + FTS5), auto-compaction with AI summarization, daily logs
+- **114 built-in tools** - Messaging, media, blockchain, DEX trading, deals, DNS, journaling, and more
+- **Plugin SDK** - Extend the agent with custom tools, frozen SDK with isolated databases, secrets management, lifecycle hooks
+- **MCP Client** - Connect external tool servers (stdio/SSE) with 2 lines of YAML, no code, no rebuild
+- **Secure by design** - Prompt injection defense, sandboxed workspace, plugin isolation, wallet encryption
 
 ---
 
@@ -59,8 +59,8 @@
 | **Message Debouncing**  | Intelligent batching of rapid group messages (DMs are always instant)                                                       |
 | **Daily Logs**          | Automatic session summaries preserved across resets                                                                         |
 | **Multi-Policy Access** | Configurable DM/group policies (open, allowlist, pairing, disabled) with per-group module permissions                       |
-| **Tool RAG**            | Semantic tool selection — sends only the top-K most relevant tools per message (hybrid vector + FTS5, configurable `top_k`, `always_include` patterns) |
-| **MCP Client**          | Connect external MCP tool servers (stdio or SSE) — auto-discovery, namespaced tools, managed via CLI or WebUI               |
+| **Tool RAG**            | Semantic tool selection - sends only the top-K most relevant tools per message (hybrid vector + FTS5, configurable `top_k`, `always_include` patterns) |
+| **MCP Client**          | Connect external MCP tool servers (stdio or SSE) - auto-discovery, namespaced tools, managed via CLI or WebUI               |
 | **Sandboxed Workspace** | Secure file system with recursive URL decoding, symlink detection, and immutable config files                               |
 
 ---
@@ -139,7 +139,7 @@ You: /status
 Agent: [Displays uptime, model, tool count, wallet balance]
 ```
 
-> **Need more details?** See [GETTING_STARTED.md](GETTING_STARTED.md) for the full guide — admin commands, troubleshooting, workspace templates, plugins, and more.
+> **Need more details?** See [GETTING_STARTED.md](GETTING_STARTED.md) for the full guide - admin commands, troubleshooting, workspace templates, plugins, and more.
 
 ---
 
@@ -182,7 +182,7 @@ webui:                       # Optional: Web dashboard
 
 ### MCP Servers
 
-Connect external tool servers via the [Model Context Protocol](https://modelcontextprotocol.io/). No code needed — tools are auto-discovered and registered at startup.
+Connect external tool servers via the [Model Context Protocol](https://modelcontextprotocol.io/). No code needed - tools are auto-discovered and registered at startup.
 
 **Via CLI (recommended):**
 ```bash
@@ -209,7 +209,7 @@ mcp:
 
 **Via WebUI:**
 
-When the WebUI is enabled, the **MCP Servers** page lets you add/remove servers, configure environment variables (API keys), and view connection status and tool lists — all from the browser.
+When the WebUI is enabled, the **MCP Servers** page lets you add/remove servers, configure environment variables (API keys), and view connection status and tool lists - all from the browser.
 
 Tools are namespaced as `mcp_<server>_<tool>` (e.g. `mcp_filesystem_read_file`). Each server supports `scope` (always, dm-only, group-only, admin-only) and `enabled` toggle.
 
@@ -219,8 +219,8 @@ The agent has two built-in web tools powered by [Tavily](https://tavily.com/) (f
 
 | Tool | Description |
 |------|-------------|
-| `web_search` | Search the web — returns titles, URLs, content snippets, relevance scores. Supports `topic`: general, news, finance |
-| `web_fetch` | Extract readable text from a URL — articles, docs, links shared by users |
+| `web_search` | Search the web - returns titles, URLs, content snippets, relevance scores. Supports `topic`: general, news, finance |
+| `web_fetch` | Extract readable text from a URL - articles, docs, links shared by users |
 
 Both tools require a Tavily API key. Set it via CLI or config:
 
@@ -258,7 +258,7 @@ Configurable keys: `tavily_api_key`, `tonapi_key`, `telegram.bot_token`, `telegr
 
 ### Environment Variables
 
-All environment variables override the corresponding `config.yaml` value at startup — useful for Docker and CI:
+All environment variables override the corresponding `config.yaml` value at startup - useful for Docker and CI:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -339,7 +339,7 @@ ssh -L 7777:localhost:7777 user@remote-server
 
 ### Workspace Files
 
-The agent's personality and rules are configured via markdown files in `~/.teleton/workspace/`. Default templates are generated during `teleton setup` — you can edit any of them to customize your agent:
+The agent's personality and rules are configured via markdown files in `~/.teleton/workspace/`. Default templates are generated during `teleton setup` - you can edit any of them to customize your agent:
 
 | File | Purpose | Mutable by Agent |
 |------|---------|-----------------|
@@ -349,7 +349,7 @@ The agent's personality and rules are configured via markdown files in `~/.telet
 | `MEMORY.md` | Persistent memory (facts, contacts, decisions) | Yes |
 | `memory/*.md` | Session summaries, daily logs (auto-generated) | Yes |
 
-> **Tip**: Templates are located in `src/templates/` if installing from source. Edit the workspace copies in `~/.teleton/workspace/` — not the source templates.
+> **Tip**: Templates are located in `src/templates/` if installing from source. Edit the workspace copies in `~/.teleton/workspace/` - not the source templates.
 
 ### Admin Commands
 
@@ -535,7 +535,7 @@ npm run format      # Prettier
 
 ### Plugins
 
-Plugins extend the agent with custom tools. Drop a `.js` file or folder in `~/.teleton/plugins/` — loaded at startup, hot-reloaded in dev mode, no rebuild needed. See [official example plugins](https://github.com/TONresistor/teleton-plugins) for complete working examples.
+Plugins extend the agent with custom tools. Drop a `.js` file or folder in `~/.teleton/plugins/` - loaded at startup, hot-reloaded in dev mode, no rebuild needed. See [official example plugins](https://github.com/TONresistor/teleton-plugins) for complete working examples.
 
 ```
 ~/.teleton/plugins/
@@ -602,12 +602,12 @@ When `tools` is a function, the SDK provides namespaced access to core services:
 | | **Moderation**: `banUser()`, `unbanUser()`, `muteUser()` |
 | | **Stars & Gifts**: `getStarsBalance()`, `sendGift()`, `getAvailableGifts()`, `getMyGifts()`, `getResaleGifts()`, `buyResaleGift()` |
 | | **Advanced**: `getMe()`, `isAvailable()`, `getRawClient()`, `setTyping()`, `sendStory()` |
-| `sdk.secrets` | `get()`, `require()`, `has()` — 3-tier resolution (env var → secrets file → plugin config) |
-| `sdk.storage` | `get()`, `set()`, `delete()`, `has()`, `clear()` — KV store with TTL support |
-| `sdk.db` | Raw `better-sqlite3` database — isolated per plugin at `~/.teleton/plugins/data/<name>.db` |
+| `sdk.secrets` | `get()`, `require()`, `has()` - 3-tier resolution (env var → secrets file → plugin config) |
+| `sdk.storage` | `get()`, `set()`, `delete()`, `has()`, `clear()` - KV store with TTL support |
+| `sdk.db` | Raw `better-sqlite3` database - isolated per plugin at `~/.teleton/plugins/data/<name>.db` |
 | `sdk.config` | Sanitized app config (no API keys exposed) |
 | `sdk.pluginConfig` | Plugin-specific config from `config.yaml` `plugins:` section |
-| `sdk.log` | `info()`, `warn()`, `error()`, `debug()` — Prefixed logger |
+| `sdk.log` | `info()`, `warn()`, `error()`, `debug()` - Prefixed logger |
 
 **Lifecycle hooks**: `migrate(db)`, `start(ctx)`, `stop()`, `onMessage(event)`, `onCallbackQuery(event)`
 
