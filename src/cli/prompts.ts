@@ -11,7 +11,7 @@ export interface TextPromptOptions {
   message: string;
   placeholder?: string;
   initialValue?: string;
-  validate?: (value: string) => string | undefined;
+  validate?: (value: string | undefined) => string | Error | undefined;
 }
 
 export interface SelectPromptOptions<T = string> {
@@ -53,7 +53,7 @@ export class ClackPrompter {
   }
   async password(options: {
     message: string;
-    validate?: (value: string) => string | undefined;
+    validate?: (value: string | undefined) => string | Error | undefined;
   }): Promise<string> {
     const result = await clack.password({
       message: options.message,

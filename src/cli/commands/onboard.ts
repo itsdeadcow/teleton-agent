@@ -35,6 +35,7 @@ export interface OnboardOptions {
   apiKey?: string;
   userId?: number;
   provider?: SupportedProvider;
+  tavilyApiKey?: string;
 }
 
 /**
@@ -272,7 +273,7 @@ ${blue}  ┌──────────────────────�
       prompter.warn(`TELETON_API_KEY env var found but invalid: ${validationError}`);
       apiKey = await prompter.password({
         message: `${providerMeta.displayName} API Key (${providerMeta.keyHint})`,
-        validate: (value) => validateApiKeyFormat(selectedProvider, value),
+        validate: (value = "") => validateApiKeyFormat(selectedProvider, value),
       });
     } else {
       prompter.log(`Using API key from TELETON_API_KEY env var`);
@@ -281,7 +282,7 @@ ${blue}  ┌──────────────────────�
   } else {
     apiKey = await prompter.password({
       message: `${providerMeta.displayName} API Key (${providerMeta.keyHint})`,
-      validate: (value) => validateApiKeyFormat(selectedProvider, value),
+      validate: (value = "") => validateApiKeyFormat(selectedProvider, value),
     });
   }
 
@@ -400,7 +401,7 @@ ${blue}  ┌──────────────────────�
     maxAgenticIterations = await prompter.text({
       message: "Max agentic iterations (tool call loops per message)",
       initialValue: "5",
-      validate: (v: string) => {
+      validate: (v = "") => {
         const n = parseInt(v, 10);
         if (isNaN(n) || n < 1 || n > 50) return "Must be a number between 1 and 50";
       },
@@ -425,7 +426,7 @@ ${blue}  ┌──────────────────────�
       const buyInput = await prompter.text({
         message: "Max buy price (% of floor price)",
         initialValue: "100",
-        validate: (v: string) => {
+        validate: (v = "") => {
           const n = parseInt(v, 10);
           if (isNaN(n) || n < 50 || n > 150) return "Must be between 50 and 150";
         },
@@ -435,7 +436,7 @@ ${blue}  ┌──────────────────────�
       const sellInput = await prompter.text({
         message: "Min sell price (% of floor price)",
         initialValue: "105",
-        validate: (v: string) => {
+        validate: (v = "") => {
           const n = parseInt(v, 10);
           if (isNaN(n) || n < 100 || n > 200) return "Must be between 100 and 200";
         },
@@ -508,6 +509,34 @@ ${blue}  ┌──────────────────────�
     tonapiKey = keyInput;
   }
 
+  // Tavily API key (optional, for web search & page extraction)
+  let tavilyApiKey: string | undefined;
+  const setupTavily = await prompter.confirm({
+    message:
+      "Enable web search? (requires a free Tavily API key — 1,000 req/month, no credit card)",
+    initialValue: false,
+  });
+
+  if (setupTavily) {
+    prompter.note(
+      "Web search lets your agent search the internet and read web pages.\n\n" +
+        "To get your free API key (takes 30 seconds):\n\n" +
+        "  1. Go to https://app.tavily.com/sign-in\n" +
+        "  2. Create an account (email or Google/GitHub)\n" +
+        "  3. Your API key is displayed on the dashboard\n" +
+        "     (starts with tvly-)\n\n" +
+        "Free plan: 1,000 requests/month — no credit card required.",
+      "Tavily — Web Search API"
+    );
+    const keyInput = await prompter.text({
+      message: "Tavily API key (starts with tvly-)",
+      validate: (v) => {
+        if (!v || !v.startsWith("tvly-")) return "Invalid key (should start with tvly-)";
+      },
+    });
+    tavilyApiKey = keyInput;
+  }
+
   // Build config
   const config: Config = {
     meta: {
@@ -572,8 +601,24 @@ ${blue}  ┌──────────────────────�
       log_requests: false,
     },
     dev: { hot_reload: false },
+    tool_rag: {
+      enabled: true,
+      top_k: 25,
+      always_include: [
+        "telegram_send_message",
+        "telegram_reply_message",
+        "telegram_send_photo",
+        "telegram_send_document",
+        "journal_*",
+        "workspace_*",
+        "web_*",
+      ],
+      skip_unlimited_providers: false,
+    },
+    mcp: { servers: {} },
     plugins: {},
     tonapi_key: tonapiKey,
+    tavily_api_key: tavilyApiKey,
   };
 
   // Save config
@@ -605,7 +650,7 @@ ${blue}  ┌──────────────────────�
     } else if (walletAction === "import") {
       const mnemonicInput = await prompter.text({
         message: "Enter your 24-word mnemonic (space-separated)",
-        validate: (value) => {
+        validate: (value = "") => {
           const words = value.trim().split(/\s+/);
           if (words.length !== 24) return `Expected 24 words, got ${words.length}`;
         },
@@ -680,7 +725,8 @@ ${blue}  ┌──────────────────────�
       `Admin: User ID ${userId}\n` +
       `Provider: ${providerMeta.displayName}\n` +
       `Model: ${selectedModel}\n` +
-      `TON Wallet: ${wallet.address}`,
+      `TON Wallet: ${wallet.address}\n` +
+      `Web Search: ${tavilyApiKey ? "Tavily ✓" : "disabled (no Tavily key)"}`,
     "Setup complete"
   );
 
@@ -790,7 +836,23 @@ async function runNonInteractiveOnboarding(
       log_requests: false,
     },
     dev: { hot_reload: false },
+    tool_rag: {
+      enabled: true,
+      top_k: 25,
+      always_include: [
+        "telegram_send_message",
+        "telegram_reply_message",
+        "telegram_send_photo",
+        "telegram_send_document",
+        "journal_*",
+        "workspace_*",
+        "web_*",
+      ],
+      skip_unlimited_providers: false,
+    },
+    mcp: { servers: {} },
     plugins: {},
+    tavily_api_key: options.tavilyApiKey,
   };
 
   const configYaml = YAML.stringify(config);

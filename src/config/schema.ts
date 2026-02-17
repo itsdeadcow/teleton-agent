@@ -36,7 +36,7 @@ export const AgentConfigSchema = z.object({
     .number()
     .default(5)
     .describe("Maximum number of agentic loop iterations (tool call → result → tool call cycles)"),
-  session_reset_policy: SessionResetPolicySchema.default({}),
+  session_reset_policy: SessionResetPolicySchema.default(SessionResetPolicySchema.parse({})),
 });
 
 export const TelegramConfigSchema = z.object({
@@ -87,66 +87,116 @@ export const MetaConfigSchema = z.object({
   onboard_command: z.string().default("teleton setup"),
 });
 
-export const DealsConfigSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    expiry_seconds: z.number().default(120),
-    buy_max_floor_percent: z.number().default(100),
-    sell_min_floor_percent: z.number().default(105),
-    poll_interval_ms: z.number().default(5000),
-    max_verification_retries: z.number().default(12),
-    expiry_check_interval_ms: z.number().default(60000),
-  })
-  .default({});
+const _DealsObject = z.object({
+  enabled: z.boolean().default(true),
+  expiry_seconds: z.number().default(120),
+  buy_max_floor_percent: z.number().default(100),
+  sell_min_floor_percent: z.number().default(105),
+  poll_interval_ms: z.number().default(5000),
+  max_verification_retries: z.number().default(12),
+  expiry_check_interval_ms: z.number().default(60000),
+});
+export const DealsConfigSchema = _DealsObject.default(_DealsObject.parse({}));
 
-export const WebUIConfigSchema = z
+const _WebUIObject = z.object({
+  enabled: z.boolean().default(false).describe("Enable WebUI server"),
+  port: z.number().default(7777).describe("HTTP server port"),
+  host: z.string().default("127.0.0.1").describe("Bind address (localhost only for security)"),
+  auth_token: z
+    .string()
+    .optional()
+    .describe("Bearer token for API auth (auto-generated if omitted)"),
+  cors_origins: z
+    .array(z.string())
+    .default(["http://localhost:5173", "http://localhost:7777"])
+    .describe("Allowed CORS origins for development"),
+  log_requests: z.boolean().default(false).describe("Log all HTTP requests"),
+});
+export const WebUIConfigSchema = _WebUIObject.default(_WebUIObject.parse({}));
+
+const _EmbeddingObject = z.object({
+  provider: z
+    .enum(["local", "anthropic", "none"])
+    .default("local")
+    .describe("Embedding provider: local (ONNX), anthropic (API), or none (FTS5-only)"),
+  model: z
+    .string()
+    .optional()
+    .describe("Model override (default: Xenova/all-MiniLM-L6-v2 for local)"),
+});
+export const EmbeddingConfigSchema = _EmbeddingObject.default(_EmbeddingObject.parse({}));
+
+const _DevObject = z.object({
+  hot_reload: z
+    .boolean()
+    .default(false)
+    .describe("Enable plugin hot-reload (watches ~/.teleton/plugins/ for changes)"),
+});
+export const DevConfigSchema = _DevObject.default(_DevObject.parse({}));
+
+const McpServerSchema = z
   .object({
-    enabled: z.boolean().default(false).describe("Enable WebUI server"),
-    port: z.number().default(7777).describe("HTTP server port"),
-    host: z.string().default("127.0.0.1").describe("Bind address (localhost only for security)"),
-    auth_token: z
+    command: z
       .string()
       .optional()
-      .describe("Bearer token for API auth (auto-generated if omitted)"),
-    cors_origins: z
+      .describe("Stdio command (e.g. 'npx @modelcontextprotocol/server-filesystem /tmp')"),
+    args: z
       .array(z.string())
-      .default(["http://localhost:5173", "http://localhost:7777"])
-      .describe("Allowed CORS origins for development"),
-    log_requests: z.boolean().default(false).describe("Log all HTTP requests"),
-  })
-  .default({});
-
-export const EmbeddingConfigSchema = z
-  .object({
-    provider: z
-      .enum(["local", "anthropic", "none"])
-      .default("local")
-      .describe("Embedding provider: local (ONNX), anthropic (API), or none (FTS5-only)"),
-    model: z
-      .string()
       .optional()
-      .describe("Model override (default: Xenova/all-MiniLM-L6-v2 for local)"),
+      .describe("Explicit args array (overrides command splitting)"),
+    env: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe("Environment variables for stdio server"),
+    url: z.string().url().optional().describe("SSE/HTTP endpoint URL (alternative to command)"),
+    scope: z
+      .enum(["always", "dm-only", "group-only", "admin-only"])
+      .default("always")
+      .describe("Tool scope"),
+    enabled: z.boolean().default(true).describe("Enable/disable this server"),
   })
-  .default({});
+  .refine((s) => s.command || s.url, {
+    message: "Each MCP server needs either 'command' (stdio) or 'url' (SSE/HTTP)",
+  });
 
-export const DevConfigSchema = z
-  .object({
-    hot_reload: z
-      .boolean()
-      .default(false)
-      .describe("Enable plugin hot-reload (watches ~/.teleton/plugins/ for changes)"),
-  })
-  .default({});
+const _McpObject = z.object({
+  servers: z.record(z.string(), McpServerSchema).default({}),
+});
+export const McpConfigSchema = _McpObject.default(_McpObject.parse({}));
+
+const _ToolRagObject = z.object({
+  enabled: z.boolean().default(false).describe("Enable semantic tool retrieval (Tool RAG)"),
+  top_k: z.number().default(25).describe("Max tools to retrieve per LLM call"),
+  always_include: z
+    .array(z.string())
+    .default([
+      "telegram_send_message",
+      "telegram_reply_message",
+      "telegram_send_photo",
+      "telegram_send_document",
+      "journal_*",
+      "workspace_*",
+      "web_*",
+    ])
+    .describe("Tool name patterns always included (prefix glob with *)"),
+  skip_unlimited_providers: z
+    .boolean()
+    .default(false)
+    .describe("Skip Tool RAG for providers with no tool limit (e.g. Anthropic)"),
+});
+export const ToolRagConfigSchema = _ToolRagObject.default(_ToolRagObject.parse({}));
 
 export const ConfigSchema = z.object({
-  meta: MetaConfigSchema.default({}),
+  meta: MetaConfigSchema.default(MetaConfigSchema.parse({})),
   agent: AgentConfigSchema,
   telegram: TelegramConfigSchema,
-  storage: StorageConfigSchema.default({}),
+  storage: StorageConfigSchema.default(StorageConfigSchema.parse({})),
   embedding: EmbeddingConfigSchema,
   deals: DealsConfigSchema,
   webui: WebUIConfigSchema,
   dev: DevConfigSchema,
+  tool_rag: ToolRagConfigSchema,
+  mcp: McpConfigSchema,
   plugins: z
     .record(z.string(), z.unknown())
     .default({})
@@ -155,6 +205,10 @@ export const ConfigSchema = z.object({
     .string()
     .optional()
     .describe("TonAPI key for higher rate limits (from @tonapi_bot)"),
+  tavily_api_key: z
+    .string()
+    .optional()
+    .describe("Tavily API key for web search & extract (free at https://tavily.com)"),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -166,3 +220,6 @@ export type DealsConfig = z.infer<typeof DealsConfigSchema>;
 export type WebUIConfig = z.infer<typeof WebUIConfigSchema>;
 export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>;
 export type DevConfig = z.infer<typeof DevConfigSchema>;
+export type McpConfig = z.infer<typeof McpConfigSchema>;
+export type ToolRagConfig = z.infer<typeof ToolRagConfigSchema>;
+export type McpServerConfig = z.infer<typeof McpServerSchema>;
