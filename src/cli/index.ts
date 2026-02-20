@@ -8,6 +8,7 @@ import { configExists, getDefaultConfigPath } from "../config/loader.js";
 import { readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { getErrorMessage } from "../utils/errors.js";
 
 function findPackageJson(): Record<string, unknown> {
   let dir = dirname(fileURLToPath(import.meta.url));
@@ -54,7 +55,7 @@ program
         tavilyApiKey: options.tavilyApiKey,
       });
     } catch (error) {
-      console.error("Error:", error instanceof Error ? error.message : String(error));
+      console.error("Error:", getErrorMessage(error));
       process.exit(1);
     }
   });
@@ -86,7 +87,7 @@ program
 
       await startApp(options.config);
     } catch (error) {
-      console.error("Error:", error instanceof Error ? error.message : String(error));
+      console.error("Error:", getErrorMessage(error));
       process.exit(1);
     }
   });
@@ -98,7 +99,7 @@ program
     try {
       await doctorCommand();
     } catch (error) {
-      console.error("Error:", error instanceof Error ? error.message : String(error));
+      console.error("Error:", getErrorMessage(error));
       process.exit(1);
     }
   });
@@ -125,7 +126,7 @@ mcp
     try {
       await mcpAddCommand(pkg, args, options);
     } catch (error) {
-      console.error("Error:", error instanceof Error ? error.message : String(error));
+      console.error("Error:", getErrorMessage(error));
       process.exit(1);
     }
   });
@@ -138,7 +139,7 @@ mcp
     try {
       await mcpRemoveCommand(name, options);
     } catch (error) {
-      console.error("Error:", error instanceof Error ? error.message : String(error));
+      console.error("Error:", getErrorMessage(error));
       process.exit(1);
     }
   });
@@ -151,7 +152,7 @@ mcp
     try {
       await mcpListCommand(options);
     } catch (error) {
-      console.error("Error:", error instanceof Error ? error.message : String(error));
+      console.error("Error:", getErrorMessage(error));
       process.exit(1);
     }
   });
@@ -168,7 +169,7 @@ program
     try {
       await configCommand(action, key, value, options);
     } catch (error) {
-      console.error("Error:", error instanceof Error ? error.message : String(error));
+      console.error("Error:", getErrorMessage(error));
       process.exit(1);
     }
   });

@@ -5,7 +5,9 @@ export type SupportedProvider =
   | "xai"
   | "groq"
   | "openrouter"
-  | "moonshot";
+  | "moonshot"
+  | "mistral"
+  | "cocoon";
 
 export interface ProviderMetadata {
   id: SupportedProvider;
@@ -105,6 +107,30 @@ const PROVIDER_REGISTRY: Record<SupportedProvider, ProviderMetadata> = {
     toolLimit: 128,
     piAiProvider: "moonshot",
   },
+  mistral: {
+    id: "mistral",
+    displayName: "Mistral AI",
+    envVar: "MISTRAL_API_KEY",
+    keyPrefix: null,
+    keyHint: "...",
+    consoleUrl: "https://console.mistral.ai/api-keys",
+    defaultModel: "devstral-small-2507",
+    utilityModel: "ministral-8b-latest",
+    toolLimit: 128,
+    piAiProvider: "mistral",
+  },
+  cocoon: {
+    id: "cocoon",
+    displayName: "Cocoon Network (Decentralized)",
+    envVar: "",
+    keyPrefix: null,
+    keyHint: "No API key needed — pays in TON",
+    consoleUrl: "https://cocoon.network",
+    defaultModel: "Qwen/Qwen3-32B",
+    utilityModel: "Qwen/Qwen3-32B",
+    toolLimit: 128,
+    piAiProvider: "cocoon",
+  },
 };
 
 export function getProviderMetadata(provider: SupportedProvider): ProviderMetadata {
@@ -122,6 +148,7 @@ export function getSupportedProviders(): ProviderMetadata[] {
 export function validateApiKeyFormat(provider: SupportedProvider, key: string): string | undefined {
   const meta = PROVIDER_REGISTRY[provider];
   if (!meta) return `Unknown provider: ${provider}`;
+  if (provider === "cocoon") return undefined; // No API key needed
   if (!key || key.trim().length === 0) return "API key is required";
   if (meta.keyPrefix && !key.startsWith(meta.keyPrefix)) {
     return `Invalid format (should start with ${meta.keyPrefix})`;

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, chmodSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { parse, stringify } from "yaml";
 import { expandPath } from "./loader.js";
 import { ConfigSchema } from "./schema.js";
@@ -94,7 +94,17 @@ export const CONFIGURABLE_KEYS: Record<string, ConfigKeyMeta> = {
     category: "Agent",
     description: "LLM provider",
     sensitive: false,
-    options: ["anthropic", "openai", "google", "xai", "groq", "openrouter", "moonshot"],
+    options: [
+      "anthropic",
+      "openai",
+      "google",
+      "xai",
+      "groq",
+      "openrouter",
+      "moonshot",
+      "mistral",
+      "cocoon",
+    ],
     validate: enumValidator([
       "anthropic",
       "openai",
@@ -103,6 +113,8 @@ export const CONFIGURABLE_KEYS: Record<string, ConfigKeyMeta> = {
       "groq",
       "openrouter",
       "moonshot",
+      "mistral",
+      "cocoon",
     ]),
     mask: identity,
     parse: identity,
@@ -417,6 +429,5 @@ export function writeRawConfig(raw: Record<string, any>, configPath: string): vo
   raw.meta.last_modified_at = new Date().toISOString();
 
   const fullPath = expandPath(configPath);
-  writeFileSync(fullPath, stringify(raw), "utf-8");
-  chmodSync(fullPath, 0o600);
+  writeFileSync(fullPath, stringify(raw), { encoding: "utf-8", mode: 0o600 });
 }

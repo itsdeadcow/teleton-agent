@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTelegramSDK } from "../telegram.js";
 import { PluginSDKError } from "@teleton-agent/sdk";
+import { Api } from "telegram";
 
 // ─── GramJS mock ────────────────────────────────────────────────
 vi.mock("telegram", () => {
@@ -19,6 +20,10 @@ vi.mock("telegram", () => {
       },
       InputMediaDice: cls("InputMediaDice"),
       InputReplyToMessage: cls("InputReplyToMessage"),
+      Updates: cls("Updates"),
+      UpdatesCombined: cls("UpdatesCombined"),
+      Message: cls("Message"),
+      MessageMediaDice: cls("MessageMediaDice"),
     },
   };
 });
@@ -173,18 +178,19 @@ describe("createTelegramSDK — core", () => {
   // ─── sendDice ───────────────────────────────────────────────
   describe("sendDice()", () => {
     it("invokes API and extracts value from Updates", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "Updates",
-        updates: [
-          {
-            className: "UpdateNewMessage",
-            message: {
-              id: 55,
-              media: { className: "MessageMediaDice", value: 4 },
+      mockGramJsClient.invoke.mockResolvedValue(
+        new Api.Updates({
+          updates: [
+            {
+              className: "UpdateNewMessage",
+              message: new Api.Message({
+                id: 55,
+                media: { className: "MessageMediaDice", value: 4 },
+              }),
             },
-          },
-        ],
-      });
+          ],
+        })
+      );
 
       const result = await sdk.sendDice("12345", "dice");
 
@@ -193,36 +199,38 @@ describe("createTelegramSDK — core", () => {
     });
 
     it("extracts from UpdateNewChannelMessage", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "UpdatesCombined",
-        updates: [
-          {
-            className: "UpdateNewChannelMessage",
-            message: {
-              id: 88,
-              media: { className: "MessageMediaDice", value: 6 },
+      mockGramJsClient.invoke.mockResolvedValue(
+        new Api.UpdatesCombined({
+          updates: [
+            {
+              className: "UpdateNewChannelMessage",
+              message: new Api.Message({
+                id: 88,
+                media: { className: "MessageMediaDice", value: 6 },
+              }),
             },
-          },
-        ],
-      });
+          ],
+        })
+      );
 
       const result = await sdk.sendDice("-10012345", "dice");
       expect(result).toEqual({ value: 6, messageId: 88 });
     });
 
     it("passes replyToId when provided", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "Updates",
-        updates: [
-          {
-            className: "UpdateNewMessage",
-            message: {
-              id: 1,
-              media: { className: "MessageMediaDice", value: 1 },
+      mockGramJsClient.invoke.mockResolvedValue(
+        new Api.Updates({
+          updates: [
+            {
+              className: "UpdateNewMessage",
+              message: new Api.Message({
+                id: 1,
+                media: { className: "MessageMediaDice", value: 1 },
+              }),
             },
-          },
-        ],
-      });
+          ],
+        })
+      );
 
       await sdk.sendDice("12345", "dice", 99);
       const invocationArg = mockGramJsClient.invoke.mock.calls[0][0];
@@ -230,10 +238,7 @@ describe("createTelegramSDK — core", () => {
     });
 
     it("throws when dice value cannot be extracted", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "Updates",
-        updates: [],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(new Api.Updates({ updates: [] }));
 
       await expect(sdk.sendDice("12345", "dice")).rejects.toMatchObject({
         code: "OPERATION_FAILED",

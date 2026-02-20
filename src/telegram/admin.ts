@@ -5,10 +5,13 @@ import { getWalletAddress, getWalletBalance } from "../ton/wallet-service.js";
 import { getProviderMetadata, type SupportedProvider } from "../config/providers.js";
 import { DEALS_CONFIG } from "../deals/config.js";
 import { loadTemplate } from "../workspace/manager.js";
-import { isVerbose, setVerbose } from "../utils/logger.js";
+import { isVerbose, setVerbose, createLogger } from "../utils/logger.js";
+
+const log = createLogger("Telegram");
 import type { ModulePermissions, ModuleLevel } from "../agent/tools/module-permissions.js";
 import type { ToolRegistry } from "../agent/tools/registry.js";
 import { writePluginSecret, deletePluginSecret, listPluginSecretKeys } from "../sdk/secrets.js";
+import { getErrorMessage } from "../utils/errors.js";
 
 export interface AdminCommand {
   command: string;
@@ -185,7 +188,7 @@ export class AdminHandler {
     const [target, value] = command.args;
 
     if (target === "dm") {
-      if (!VALID_DM_POLICIES.includes(value as any)) {
+      if (!(VALID_DM_POLICIES as readonly string[]).includes(value)) {
         return `❌ Invalid DM policy. Valid: ${VALID_DM_POLICIES.join(", ")}`;
       }
       const old = this.config.dm_policy;
@@ -194,7 +197,7 @@ export class AdminHandler {
     }
 
     if (target === "group") {
-      if (!VALID_GROUP_POLICIES.includes(value as any)) {
+      if (!(VALID_GROUP_POLICIES as readonly string[]).includes(value)) {
         return `❌ Invalid group policy. Valid: ${VALID_GROUP_POLICIES.join(", ")}`;
       }
       const old = this.config.group_policy;
@@ -254,7 +257,7 @@ export class AdminHandler {
   }
 
   private async handleStopCommand(): Promise<string> {
-    console.log("🛑 [Admin] /stop command received - shutting down");
+    log.info("🛑 [Admin] /stop command received - shutting down");
     setTimeout(() => process.kill(process.pid, "SIGTERM"), 1000);
     return "🛑 Shutting down...";
   }
@@ -405,7 +408,7 @@ export class AdminHandler {
       return `⛔ Module "${module}" is protected`;
     }
 
-    if (!VALID_MODULE_LEVELS.includes(level as any)) {
+    if (!(VALID_MODULE_LEVELS as readonly string[]).includes(level)) {
       return `❌ Invalid level: "${level}". Valid: ${VALID_MODULE_LEVELS.join(", ")}`;
     }
 

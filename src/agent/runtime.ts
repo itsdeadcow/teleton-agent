@@ -43,6 +43,8 @@ import type {
   Tool as PiAiTool,
   UserMessage,
   ToolResultMessage,
+  TextContent,
+  ToolCall,
 } from "@mariozechner/pi-ai";
 import { CompactionManager, DEFAULT_COMPACTION_CONFIG } from "../memory/compaction.js";
 import { maskOldToolResults } from "../memory/observation-masking.js";
@@ -52,7 +54,9 @@ import type { ToolRegistry } from "./tools/registry.js";
 import type { ToolContext } from "./tools/types.js";
 import { appendToDailyLog, writeSessionEndSummary } from "../memory/daily-logs.js";
 import { saveSessionMemory } from "../session/memory-hook.js";
-import { verbose } from "../utils/logger.js";
+import { createLogger } from "../utils/logger.js";
+
+const log = createLogger("Agent");
 
 function isContextOverflowError(errorMessage?: string): boolean {
   if (!errorMessage) return false;
@@ -89,8 +93,8 @@ function extractContextSummary(context: Context, maxMessages: number = 10): stri
       const body = bodyMatch ? bodyMatch[1] : content;
       summaryParts.push(`- **User**: ${body.substring(0, 150)}${body.length > 150 ? "..." : ""}`);
     } else if (msg.role === "assistant") {
-      const textBlocks = (msg.content as any[]).filter((b: any) => b.type === "text");
-      const toolBlocks = (msg.content as any[]).filter((b: any) => b.type === "toolCall");
+      const textBlocks = msg.content.filter((b): b is TextContent => b.type === "text");
+      const toolBlocks = msg.content.filter((b): b is ToolCall => b.type === "toolCall");
 
       if (textBlocks.length > 0) {
         const text = textBlocks[0].text || "";
@@ -100,13 +104,12 @@ function extractContextSummary(context: Context, maxMessages: number = 10): stri
       }
 
       if (toolBlocks.length > 0) {
-        const toolNames = toolBlocks.map((b: any) => b.name).join(", ");
+        const toolNames = toolBlocks.map((b) => b.name).join(", ");
         summaryParts.push(`  - *Tools used: ${toolNames}*`);
       }
     } else if (msg.role === "toolResult") {
-      const toolMsg = msg as any;
-      const status = toolMsg.isError ? "ERROR" : "OK";
-      summaryParts.push(`  - *Tool result: ${toolMsg.toolName} → ${status}*`);
+      const status = msg.isError ? "ERROR" : "OK";
+      summaryParts.push(`  - *Tool result: ${msg.toolName} → ${status}*`);
     }
   }
 
@@ -180,11 +183,11 @@ export class AgentRuntime {
 
       const resetPolicy = this.config.agent.session_reset_policy;
       if (shouldResetSession(session, resetPolicy)) {
-        console.log(`🔄 Auto-resetting session based on policy`);
+        log.info(`🔄 Auto-resetting session based on policy`);
 
         if (transcriptExists(session.sessionId)) {
           try {
-            console.log(`💾 Saving memory before daily reset...`);
+            log.info(`💾 Saving memory before daily reset...`);
             const oldContext = loadContextFromTranscript(session.sessionId);
 
             await saveSessionMemory({
@@ -197,9 +200,9 @@ export class AgentRuntime {
               utilityModel: this.config.agent.utility_model,
             });
 
-            console.log(`✅ Memory saved before reset`);
+            log.info(`✅ Memory saved before reset`);
           } catch (error) {
-            console.warn(`⚠️ Failed to save memory before reset:`, error);
+            log.warn({ err: error }, `⚠️ Failed to save memory before reset`);
           }
         }
 
@@ -208,9 +211,9 @@ export class AgentRuntime {
 
       let context: Context = loadContextFromTranscript(session.sessionId);
       if (context.messages.length > 0) {
-        console.log(`📖 Loading existing session: ${session.sessionId}`);
+        log.info(`📖 Loading existing session: ${session.sessionId}`);
       } else {
-        console.log(`🆕 Starting new session: ${session.sessionId}`);
+        log.info(`🆕 Starting new session: ${session.sessionId}`);
       }
 
       const previousTimestamp = session.updatedAt;
@@ -231,15 +234,15 @@ export class AgentRuntime {
 
       if (pendingContext) {
         formattedMessage = `${pendingContext}\n\n${formattedMessage}`;
-        verbose(`📋 Including ${pendingContext.split("\n").length - 1} pending messages`);
+        log.debug(`📋 Including ${pendingContext.split("\n").length - 1} pending messages`);
       }
 
-      verbose(`📨 Formatted message: ${formattedMessage.substring(0, 100)}...`);
+      log.debug(`📨 Formatted message: ${formattedMessage.substring(0, 100)}...`);
 
       const preview = formattedMessage.slice(0, 50).replace(/\n/g, " ");
       const who = senderUsername ? `@${senderUsername}` : userName;
       const msgType = isGroup ? `Group ${chatId} ${who}` : `DM ${who}`;
-      console.log(`\n📨 ${msgType}: "${preview}${formattedMessage.length > 50 ? "..." : ""}"`);
+      log.info(`📨 ${msgType}: "${preview}${formattedMessage.length > 50 ? "..." : ""}"`);
 
       let relevantContext = "";
       if (this.contextBuilder && !isTrivialMessage(userMessage)) {
@@ -274,12 +277,12 @@ export class AgentRuntime {
 
           if (contextParts.length > 0) {
             relevantContext = contextParts.join("\n\n");
-            verbose(
+            log.debug(
               `🔍 Found ${dbContext.relevantKnowledge.length} knowledge chunks, ${dbContext.relevantFeed.length} feed messages`
             );
           }
         } catch (error) {
-          console.warn("Context building failed:", error);
+          log.warn({ err: error }, "Context building failed");
         }
       }
 
@@ -326,7 +329,7 @@ export class AgentRuntime {
         this.config.agent.utility_model
       );
       if (preemptiveCompaction) {
-        console.log(`🗜️  Preemptive compaction triggered, reloading session...`);
+        log.info(`🗜️  Preemptive compaction triggered, reloading session...`);
         session = getSession(chatId)!;
         context = loadContextFromTranscript(session.sessionId);
         context.messages.push(userMsg);
@@ -334,41 +337,42 @@ export class AgentRuntime {
 
       appendToTranscript(session.sessionId, userMsg);
 
-      const providerMeta = getProviderMetadata(
-        (this.config.agent.provider || "anthropic") as SupportedProvider
-      );
+      const provider = (this.config.agent.provider || "anthropic") as SupportedProvider;
+      const providerMeta = getProviderMetadata(provider);
       const isAdmin =
         toolContext?.config?.telegram.admin_ids.includes(toolContext.senderId) ?? false;
 
       let tools: PiAiTool[] | undefined;
-      const toolIndex = this.toolRegistry?.getToolIndex();
-      const useRAG =
-        toolIndex?.isIndexed &&
-        this.config.tool_rag?.enabled !== false &&
-        !isTrivialMessage(userMessage) &&
-        !(
-          providerMeta.toolLimit === null &&
-          this.config.tool_rag?.skip_unlimited_providers !== false
-        );
+      {
+        const toolIndex = this.toolRegistry?.getToolIndex();
+        const useRAG =
+          toolIndex?.isIndexed &&
+          this.config.tool_rag?.enabled !== false &&
+          !isTrivialMessage(userMessage) &&
+          !(
+            providerMeta.toolLimit === null &&
+            this.config.tool_rag?.skip_unlimited_providers !== false
+          );
 
-      if (useRAG && this.toolRegistry && this.embedder) {
-        const queryEmbedding = await this.embedder.embedQuery(userMessage);
-        tools = await this.toolRegistry.getForContextWithRAG(
-          userMessage,
-          queryEmbedding,
-          isGroup ?? false,
-          providerMeta.toolLimit,
-          chatId,
-          isAdmin
-        );
-        console.log(`  🔍 Tool RAG: ${tools.length}/${this.toolRegistry.count} tools selected`);
-      } else {
-        tools = this.toolRegistry?.getForContext(
-          isGroup ?? false,
-          providerMeta.toolLimit,
-          chatId,
-          isAdmin
-        );
+        if (useRAG && this.toolRegistry && this.embedder) {
+          const queryEmbedding = await this.embedder.embedQuery(userMessage);
+          tools = await this.toolRegistry.getForContextWithRAG(
+            userMessage,
+            queryEmbedding,
+            isGroup ?? false,
+            providerMeta.toolLimit,
+            chatId,
+            isAdmin
+          );
+          log.info(`🔍 Tool RAG: ${tools.length}/${this.toolRegistry.count} tools selected`);
+        } else {
+          tools = this.toolRegistry?.getForContext(
+            isGroup ?? false,
+            providerMeta.toolLimit,
+            chatId,
+            isAdmin
+          );
+        }
       }
 
       const maxIterations = this.config.agent.max_agentic_iterations || 5;
@@ -382,7 +386,7 @@ export class AgentRuntime {
 
       while (iteration < maxIterations) {
         iteration++;
-        verbose(`\n🔄 Agentic iteration ${iteration}/${maxIterations}`);
+        log.debug(`🔄 Agentic iteration ${iteration}/${maxIterations}`);
 
         const maskedMessages = maskOldToolResults(
           context.messages,
@@ -399,7 +403,7 @@ export class AgentRuntime {
           tools,
         });
 
-        const assistantMsg = response.message as any;
+        const assistantMsg = response.message;
         if (assistantMsg.stopReason === "error") {
           const errorMsg = assistantMsg.errorMessage || "";
 
@@ -410,46 +414,46 @@ export class AgentRuntime {
                 "Context overflow persists after session reset. Message may be too large for the model's context window."
               );
             }
-            console.error(`🚨 Context overflow detected: ${errorMsg}`);
+            log.error(`🚨 Context overflow detected: ${errorMsg}`);
 
-            console.log(`💾 Saving session memory before reset...`);
+            log.info(`💾 Saving session memory before reset...`);
             const summary = extractContextSummary(context, CONTEXT_OVERFLOW_SUMMARY_MESSAGES);
             appendToDailyLog(summary);
-            console.log(`✅ Memory saved to daily log`);
+            log.info(`✅ Memory saved to daily log`);
 
             const archived = archiveTranscript(session.sessionId);
             if (!archived) {
-              console.error(
+              log.error(
                 `⚠️  Failed to archive transcript ${session.sessionId}, proceeding with reset anyway`
               );
             }
 
-            console.log(`🔄 Resetting session due to context overflow...`);
+            log.info(`🔄 Resetting session due to context overflow...`);
             session = resetSession(chatId);
 
             context = { messages: [userMsg] };
 
             appendToTranscript(session.sessionId, userMsg);
 
-            console.log(`🔄 Retrying with fresh context...`);
+            log.info(`🔄 Retrying with fresh context...`);
             continue;
           } else if (errorMsg.toLowerCase().includes("rate") || errorMsg.includes("429")) {
             rateLimitRetries++;
             if (rateLimitRetries <= RATE_LIMIT_MAX_RETRIES) {
               const delay = 1000 * Math.pow(2, rateLimitRetries - 1);
-              console.warn(
+              log.warn(
                 `🚫 Rate limited, retrying in ${delay}ms (attempt ${rateLimitRetries}/${RATE_LIMIT_MAX_RETRIES})...`
               );
               await new Promise((r) => setTimeout(r, delay));
               iteration--;
               continue;
             }
-            console.error(`🚫 Rate limited after ${RATE_LIMIT_MAX_RETRIES} retries: ${errorMsg}`);
+            log.error(`🚫 Rate limited after ${RATE_LIMIT_MAX_RETRIES} retries: ${errorMsg}`);
             throw new Error(
               `API rate limited after ${RATE_LIMIT_MAX_RETRIES} retries. Please try again later.`
             );
           } else {
-            console.error(`🚨 API error: ${errorMsg}`);
+            log.error(`🚨 API error: ${errorMsg}`);
             throw new Error(`API error: ${errorMsg || "Unknown error"}`);
           }
         }
@@ -471,17 +475,17 @@ export class AgentRuntime {
         const toolCalls = response.message.content.filter((block) => block.type === "toolCall");
 
         if (toolCalls.length === 0) {
-          console.log(`  🔄 ${iteration}/${maxIterations} → done`);
+          log.info(`🔄 ${iteration}/${maxIterations} → done`);
           finalResponse = response;
           break;
         }
 
         if (!this.toolRegistry || !toolContext) {
-          console.error("⚠️ Cannot execute tools: registry or context missing");
+          log.error("⚠️ Cannot execute tools: registry or context missing");
           break;
         }
 
-        verbose(`🔧 Executing ${toolCalls.length} tool call(s)`);
+        log.debug(`🔧 Executing ${toolCalls.length} tool call(s)`);
 
         context.messages.push(response.message);
 
@@ -498,7 +502,7 @@ export class AgentRuntime {
 
           const result = await this.toolRegistry.execute(block, fullContext);
 
-          verbose(`  ${block.name}: ${result.success ? "✓" : "✗"} ${result.error || ""}`);
+          log.debug(`${block.name}: ${result.success ? "✓" : "✗"} ${result.error || ""}`);
           iterationToolNames.push(`${block.name} ${result.success ? "✓" : "✗"}`);
 
           totalToolCalls.push({
@@ -508,7 +512,7 @@ export class AgentRuntime {
 
           let resultText = JSON.stringify(result, null, 2);
           if (resultText.length > MAX_TOOL_RESULT_SIZE) {
-            console.warn(`⚠️ Tool result too large (${resultText.length} chars), truncating...`);
+            log.warn(`⚠️ Tool result too large (${resultText.length} chars), truncating...`);
             const data = result.data as Record<string, unknown> | undefined;
             if (data?.summary || data?.message) {
               resultText = JSON.stringify(
@@ -529,35 +533,50 @@ export class AgentRuntime {
             }
           }
 
-          const toolResultMsg: ToolResultMessage = {
-            role: "toolResult",
-            toolCallId: block.id,
-            toolName: block.name,
-            content: [
-              {
-                type: "text",
-                text: resultText,
-              },
-            ],
-            isError: !result.success,
-            timestamp: Date.now(),
-          };
-
-          context.messages.push(toolResultMsg);
-
-          appendToTranscript(session.sessionId, toolResultMsg);
+          if (provider === "cocoon") {
+            // Cocoon/Qwen3: tool results as <tool_response> in a user message
+            const { wrapToolResult } = await import("../cocoon/tool-adapter.js");
+            const cocoonResultMsg: UserMessage = {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: wrapToolResult(resultText),
+                },
+              ],
+              timestamp: Date.now(),
+            };
+            context.messages.push(cocoonResultMsg);
+            appendToTranscript(session.sessionId, cocoonResultMsg);
+          } else {
+            const toolResultMsg: ToolResultMessage = {
+              role: "toolResult",
+              toolCallId: block.id,
+              toolName: block.name,
+              content: [
+                {
+                  type: "text",
+                  text: resultText,
+                },
+              ],
+              isError: !result.success,
+              timestamp: Date.now(),
+            };
+            context.messages.push(toolResultMsg);
+            appendToTranscript(session.sessionId, toolResultMsg);
+          }
         }
 
-        console.log(`  🔄 ${iteration}/${maxIterations} → ${iterationToolNames.join(", ")}`);
+        log.info(`🔄 ${iteration}/${maxIterations} → ${iterationToolNames.join(", ")}`);
 
         if (iteration === maxIterations) {
-          console.log(`  ⚠️ Max iterations reached (${maxIterations})`);
+          log.info(`⚠️ Max iterations reached (${maxIterations})`);
           finalResponse = response;
         }
       }
 
       if (!finalResponse) {
-        console.error("⚠️ Agentic loop exited early without final response");
+        log.error("⚠️ Agentic loop exited early without final response");
         return {
           content: "Internal error: Agent loop failed to produce a response.",
           toolCalls: [],
@@ -604,7 +623,7 @@ export class AgentRuntime {
         if (u.cacheRead) cacheParts.push(`${(u.cacheRead / 1000).toFixed(1)}K cached`);
         if (u.cacheWrite) cacheParts.push(`${(u.cacheWrite / 1000).toFixed(1)}K new`);
         const cacheInfo = cacheParts.length > 0 ? ` (${cacheParts.join(", ")})` : "";
-        console.log(`  💰 ${inK}K in${cacheInfo}, ${u.output} out | $${u.totalCost.toFixed(3)}`);
+        log.info(`💰 ${inK}K in${cacheInfo}, ${u.output} out | $${u.totalCost.toFixed(3)}`);
       }
 
       let content = accumulatedTexts.join("\n").trim() || response.text;
@@ -612,14 +631,14 @@ export class AgentRuntime {
       const usedTelegramSendTool = totalToolCalls.some((tc) => TELEGRAM_SEND_TOOLS.has(tc.name));
 
       if (!content && totalToolCalls.length > 0 && !usedTelegramSendTool) {
-        console.warn("⚠️ Empty response after tool calls - generating fallback");
+        log.warn("⚠️ Empty response after tool calls - generating fallback");
         content =
           "I executed the requested action but couldn't generate a response. Please try again.";
       } else if (!content && usedTelegramSendTool) {
-        console.log("✅ Response sent via Telegram tool - no additional text needed");
+        log.info("✅ Response sent via Telegram tool - no additional text needed");
         content = "";
       } else if (!content && accumulatedUsage.input === 0 && accumulatedUsage.output === 0) {
-        console.warn("⚠️ Empty response with zero tokens - possible API issue");
+        log.warn("⚠️ Empty response with zero tokens - possible API issue");
         content = "I couldn't process your request. Please try again.";
       }
 
@@ -628,7 +647,7 @@ export class AgentRuntime {
         toolCalls: totalToolCalls,
       };
     } catch (error) {
-      console.error("Agent error:", error);
+      log.error({ err: error }, "Agent error");
       throw error;
     }
   }
@@ -646,7 +665,7 @@ export class AgentRuntime {
 
     resetSession(chatId);
 
-    console.log(`🗑️  Cleared history for chat ${chatId}`);
+    log.info(`🗑️  Cleared history for chat ${chatId}`);
   }
 
   getConfig(): Config {
@@ -679,7 +698,7 @@ export class AgentRuntime {
     maxTokens?: number;
   }): void {
     this.compactionManager.updateConfig(config);
-    console.log(`🗜️  Compaction config updated:`, this.compactionManager.getConfig());
+    log.info({ config: this.compactionManager.getConfig() }, `🗜️  Compaction config updated`);
   }
 
   getCompactionConfig() {

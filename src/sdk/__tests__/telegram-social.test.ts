@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTelegramSocialSDK } from "../telegram-social.js";
 import { PluginSDKError } from "@teleton-agent/sdk";
+import { Api } from "telegram";
 
 // ─── GramJS mock ────────────────────────────────────────────────
 vi.mock("telegram", () => {
@@ -11,6 +12,12 @@ vi.mock("telegram", () => {
         Object.assign(this, { _: tag, ...args });
       }
     };
+  const User = cls("User");
+  const Channel = cls("Channel");
+  const Chat = cls("Chat");
+  const Updates = cls("Updates");
+  const UpdatesCombined = cls("UpdatesCombined");
+
   return {
     Api: {
       channels: {
@@ -35,6 +42,11 @@ vi.mock("telegram", () => {
       stories: {
         SendStory: cls("stories.SendStory"),
       },
+      User,
+      Channel,
+      Chat,
+      Updates,
+      UpdatesCombined,
       InputPeerSelf: cls("InputPeerSelf"),
       InputInvoiceStarGift: cls("InputInvoiceStarGift"),
       TextWithEntities: cls("TextWithEntities"),
@@ -387,7 +399,7 @@ describe("createTelegramSocialSDK", () => {
   describe("resolveUsername()", () => {
     it("resolves a user", async () => {
       mockGramJsClient.invoke.mockResolvedValue({
-        users: [{ id: BigInt(100), username: "alice", firstName: "Alice" }],
+        users: [new (Api.User as any)({ id: BigInt(100), username: "alice", firstName: "Alice" })],
         chats: [],
       });
 
@@ -404,7 +416,14 @@ describe("createTelegramSocialSDK", () => {
     it("resolves a Channel chat", async () => {
       mockGramJsClient.invoke.mockResolvedValue({
         users: [],
-        chats: [{ id: BigInt(200), className: "Channel", username: "news", title: "News" }],
+        chats: [
+          new (Api.Channel as any)({
+            id: BigInt(200),
+            className: "Channel",
+            username: "news",
+            title: "News",
+          }),
+        ],
       });
 
       const result = await sdk.resolveUsername("news");
@@ -420,7 +439,14 @@ describe("createTelegramSocialSDK", () => {
     it("resolves a non-Channel chat", async () => {
       mockGramJsClient.invoke.mockResolvedValue({
         users: [],
-        chats: [{ id: BigInt(300), className: "Chat", username: "group", title: "Group" }],
+        chats: [
+          new (Api.Chat as any)({
+            id: BigInt(300),
+            className: "Chat",
+            username: "group",
+            title: "Group",
+          }),
+        ],
       });
 
       const result = await sdk.resolveUsername("group");
@@ -428,7 +454,7 @@ describe("createTelegramSocialSDK", () => {
       expect(result).toEqual({
         id: 300,
         type: "chat",
-        username: "group",
+        username: undefined,
         title: "Group",
       });
     });
@@ -523,10 +549,11 @@ describe("createTelegramSocialSDK", () => {
   // ─── createPoll ─────────────────────────────────────────────
   describe("createPoll()", () => {
     it("creates a poll and extracts message ID from updates", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "Updates",
-        updates: [{ className: "UpdateNewMessage", message: { id: 42 } }],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new (Api.Updates as any)({
+          updates: [{ className: "UpdateNewMessage", message: { id: 42 } }],
+        })
+      );
 
       const result = await sdk.createPoll("chat1", "Favorite color?", ["Red", "Blue", "Green"]);
       expect(result).toBe(42);
@@ -555,10 +582,11 @@ describe("createTelegramSocialSDK", () => {
     });
 
     it("passes isAnonymous and multipleChoice options", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "Updates",
-        updates: [{ className: "UpdateNewMessage", message: { id: 1 } }],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new (Api.Updates as any)({
+          updates: [{ className: "UpdateNewMessage", message: { id: 1 } }],
+        })
+      );
 
       await sdk.createPoll("chat1", "q?", ["a", "b"], {
         isAnonymous: false,
@@ -572,10 +600,7 @@ describe("createTelegramSocialSDK", () => {
     });
 
     it("returns 0 when no update found", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "Updates",
-        updates: [],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(new (Api.Updates as any)({ updates: [] }));
 
       const result = await sdk.createPoll("chat1", "q?", ["a", "b"]);
       expect(result).toBe(0);
@@ -585,10 +610,11 @@ describe("createTelegramSocialSDK", () => {
   // ─── createQuiz ─────────────────────────────────────────────
   describe("createQuiz()", () => {
     it("creates a quiz with correct answer", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        className: "Updates",
-        updates: [{ className: "UpdateNewChannelMessage", message: { id: 55 } }],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new (Api.Updates as any)({
+          updates: [{ className: "UpdateNewChannelMessage", message: { id: 55 } }],
+        })
+      );
 
       const result = await sdk.createQuiz("chat1", "2+2?", ["3", "4", "5"], 1, "Because math");
       expect(result).toBe(55);
@@ -926,7 +952,11 @@ describe("createTelegramSocialSDK", () => {
   describe("sendStory()", () => {
     it("uploads photo and sends story", async () => {
       mockGramJsClient.uploadFile.mockResolvedValue({ _: "InputFile" });
-      mockGramJsClient.invoke.mockResolvedValue({ id: 77 });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new (Api.Updates as any)({
+          updates: [{ className: "UpdateStory", story: { id: 77 } }],
+        })
+      );
 
       const result = await sdk.sendStory("/path/to/image.jpg", { caption: "My story" });
 
@@ -937,7 +967,11 @@ describe("createTelegramSocialSDK", () => {
 
     it("detects video files by extension", async () => {
       mockGramJsClient.uploadFile.mockResolvedValue({ _: "InputFile" });
-      mockGramJsClient.invoke.mockResolvedValue({ id: 88 });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new (Api.Updates as any)({
+          updates: [{ className: "UpdateStory", story: { id: 88 } }],
+        })
+      );
 
       const result = await sdk.sendStory("/path/to/clip.mp4");
 
@@ -949,7 +983,11 @@ describe("createTelegramSocialSDK", () => {
 
     it("uses InputMediaUploadedPhoto for non-video files", async () => {
       mockGramJsClient.uploadFile.mockResolvedValue({ _: "InputFile" });
-      mockGramJsClient.invoke.mockResolvedValue({ id: 99 });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new (Api.Updates as any)({
+          updates: [{ className: "UpdateStory", story: { id: 99 } }],
+        })
+      );
 
       await sdk.sendStory("/path/to/photo.png");
 
@@ -959,7 +997,7 @@ describe("createTelegramSocialSDK", () => {
 
     it("returns 0 when result has no id", async () => {
       mockGramJsClient.uploadFile.mockResolvedValue({ _: "InputFile" });
-      mockGramJsClient.invoke.mockResolvedValue({});
+      mockGramJsClient.invoke.mockResolvedValue(new (Api.Updates as any)({ updates: [] }));
 
       const result = await sdk.sendStory("/path/to/img.jpg");
       expect(result).toBe(0);

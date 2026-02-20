@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTelegramMessagesSDK } from "../telegram-messages.js";
 import { PluginSDKError } from "@teleton-agent/sdk";
+import { Api } from "telegram";
 
 // ─── GramJS mock ────────────────────────────────────────────────
 vi.mock("telegram", () => {
@@ -23,6 +24,8 @@ vi.mock("telegram", () => {
         Search: cls("messages.Search"),
         GetReplies: cls("messages.GetReplies"),
       },
+      Updates: cls("Updates"),
+      UpdatesCombined: cls("UpdatesCombined"),
       InputMessagesFilterEmpty: cls("InputMessagesFilterEmpty"),
       DocumentAttributeVideo: cls("DocumentAttributeVideo"),
       DocumentAttributeAudio: cls("DocumentAttributeAudio"),
@@ -158,34 +161,40 @@ describe("createTelegramMessagesSDK", () => {
   // ─── forwardMessage ─────────────────────────────────────────
   describe("forwardMessage()", () => {
     it("extracts forwarded message ID from UpdateNewMessage", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        updates: [{ className: "UpdateNewMessage", message: { id: 77 } }],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new Api.Updates({
+          updates: [{ className: "UpdateNewMessage", message: { id: 77 } }],
+        })
+      );
 
       const result = await sdk.forwardMessage("from", "to", 10);
       expect(result).toBe(77);
     });
 
     it("extracts from UpdateNewChannelMessage", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        updates: [{ className: "UpdateNewChannelMessage", message: { id: 88 } }],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new Api.UpdatesCombined({
+          updates: [{ className: "UpdateNewChannelMessage", message: { id: 88 } }],
+        })
+      );
 
       const result = await sdk.forwardMessage("from", "to", 10);
       expect(result).toBe(88);
     });
 
     it("returns 0 when no matching update found", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({
-        updates: [{ className: "UpdateReadHistoryOutbox" }],
-      });
+      mockGramJsClient.invoke.mockResolvedValue(
+        new Api.Updates({
+          updates: [{ className: "UpdateReadHistoryOutbox" }],
+        })
+      );
 
       const result = await sdk.forwardMessage("from", "to", 10);
       expect(result).toBe(0);
     });
 
     it("returns 0 when updates is empty", async () => {
-      mockGramJsClient.invoke.mockResolvedValue({ updates: [] });
+      mockGramJsClient.invoke.mockResolvedValue(new Api.Updates({ updates: [] }));
 
       const result = await sdk.forwardMessage("from", "to", 10);
       expect(result).toBe(0);

@@ -21,9 +21,19 @@ export const SessionResetPolicySchema = z.object({
 
 export const AgentConfigSchema = z.object({
   provider: z
-    .enum(["anthropic", "openai", "google", "xai", "groq", "openrouter", "moonshot"])
+    .enum([
+      "anthropic",
+      "openai",
+      "google",
+      "xai",
+      "groq",
+      "openrouter",
+      "moonshot",
+      "mistral",
+      "cocoon",
+    ])
     .default("anthropic"),
-  api_key: z.string(),
+  api_key: z.string().default(""),
   model: z.string().default("claude-opus-4-5-20251101"),
   utility_model: z
     .string()
@@ -126,6 +136,18 @@ const _EmbeddingObject = z.object({
 });
 export const EmbeddingConfigSchema = _EmbeddingObject.default(_EmbeddingObject.parse({}));
 
+const _LoggingObject = z.object({
+  level: z
+    .enum(["trace", "debug", "info", "warn", "error", "fatal"])
+    .default("info")
+    .describe("Log level (trace/debug/info/warn/error/fatal)"),
+  pretty: z
+    .boolean()
+    .default(true)
+    .describe("Enable pino-pretty formatting (human-readable, colored output)"),
+});
+export const LoggingConfigSchema = _LoggingObject.default(_LoggingObject.parse({}));
+
 const _DevObject = z.object({
   hot_reload: z
     .boolean()
@@ -194,6 +216,7 @@ export const ConfigSchema = z.object({
   embedding: EmbeddingConfigSchema,
   deals: DealsConfigSchema,
   webui: WebUIConfigSchema,
+  logging: LoggingConfigSchema,
   dev: DevConfigSchema,
   tool_rag: ToolRagConfigSchema,
   mcp: McpConfigSchema,
@@ -201,6 +224,17 @@ export const ConfigSchema = z.object({
     .record(z.string(), z.unknown())
     .default({})
     .describe("Per-plugin config (key = plugin name with underscores)"),
+  cocoon: z
+    .object({
+      port: z
+        .number()
+        .min(1)
+        .max(65535)
+        .default(10000)
+        .describe("HTTP port of the cocoon-cli proxy"),
+    })
+    .optional()
+    .describe("Cocoon Network — expects external cocoon-cli running on this port"),
   tonapi_key: z
     .string()
     .optional()
@@ -219,6 +253,7 @@ export type SessionResetPolicy = z.infer<typeof SessionResetPolicySchema>;
 export type DealsConfig = z.infer<typeof DealsConfigSchema>;
 export type WebUIConfig = z.infer<typeof WebUIConfigSchema>;
 export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>;
+export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 export type DevConfig = z.infer<typeof DevConfigSchema>;
 export type McpConfig = z.infer<typeof McpConfigSchema>;
 export type ToolRagConfig = z.infer<typeof ToolRagConfigSchema>;

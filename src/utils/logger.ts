@@ -141,9 +141,11 @@ export const logger = rootLogger;
 
 /**
  * Apply logging config from YAML (called after config load in TonnetApp).
- * Wires config.logging.level and config.logging.pretty to the live logger.
+ * Wires config.logging.level to the live logger.
+ * Note: pretty mode is controlled by TELETON_LOG_PRETTY env var only
+ * (pino transport is fixed at module load time before config is available).
  */
-export function initLoggerFromConfig(logging: { level?: string; pretty?: boolean }): void {
+export function initLoggerFromConfig(logging: { level?: string }): void {
   // Config level applies only if no env var override
   if (!process.env.TELETON_LOG_LEVEL && !process.env.TELETON_LOG) {
     const level = logging.level?.toLowerCase();

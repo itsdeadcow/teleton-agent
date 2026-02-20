@@ -1,4 +1,4 @@
-import type { Message, ToolResultMessage } from "@mariozechner/pi-ai";
+import type { Message, ToolResultMessage, UserMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ToolRegistry } from "../agent/tools/registry.js";
 import { MASKING_KEEP_RECENT_COUNT } from "../constants/limits.js";
 
@@ -12,6 +12,12 @@ export const DEFAULT_MASKING_CONFIG: MaskingConfig = {
   keepErrorResults: true,
 };
 
+/** Detect Cocoon-style tool results (UserMessage with `<tool_response>` CDATA). */
+const isCocoonToolResult = (msg: Message): boolean =>
+  msg.role === "user" &&
+  Array.isArray(msg.content) &&
+  msg.content.some((c) => c.type === "text" && c.text.includes("<tool_response>"));
+
 /**
  * Mask old tool results to reduce context size.
  * Replaces old results with compact summaries (~90% savings per result).
@@ -23,7 +29,7 @@ export function maskOldToolResults(
 ): Message[] {
   const toolResults = messages
     .map((msg, index) => ({ msg, index }))
-    .filter(({ msg }) => msg.role === "toolResult");
+    .filter(({ msg }) => msg.role === "toolResult" || isCocoonToolResult(msg));
 
   if (toolResults.length <= config.keepRecentCount) {
     return messages;
@@ -33,6 +39,15 @@ export function maskOldToolResults(
   const result = [...messages];
 
   for (const { msg, index } of toMask) {
+    // Cocoon tool results — mask to a compact summary
+    if (isCocoonToolResult(msg)) {
+      result[index] = {
+        ...msg,
+        content: [{ type: "text" as const, text: "[Tool response masked]" }],
+      } as UserMessage;
+      continue;
+    }
+
     const toolMsg = msg as ToolResultMessage;
 
     if (config.keepErrorResults && toolMsg.isError) {
@@ -48,9 +63,8 @@ export function maskOldToolResults(
 
     let summaryText = "";
     try {
-      const content = toolMsg.content as Array<{ type: string; text?: string }>;
-      const textBlock = content.find((c) => c.type === "text");
-      if (textBlock?.text) {
+      const textBlock = toolMsg.content.find((c): c is TextContent => c.type === "text");
+      if (textBlock) {
         const parsed = JSON.parse(textBlock.text);
         if (parsed.data?.summary) {
           summaryText = ` - ${parsed.data.summary}`;
@@ -81,10 +95,9 @@ export function calculateMaskingSavings(
   const countChars = (messages: Message[]): number => {
     let total = 0;
     for (const msg of messages) {
-      if (msg.role === "toolResult") {
-        const content = msg.content as Array<{ type: string; text?: string }>;
-        for (const block of content) {
-          if (block.type === "text" && block.text) {
+      if (msg.role === "toolResult" || isCocoonToolResult(msg)) {
+        for (const block of msg.content) {
+          if (typeof block !== "string" && block.type === "text") {
             total += block.text.length;
           }
         }

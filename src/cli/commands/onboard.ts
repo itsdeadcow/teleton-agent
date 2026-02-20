@@ -30,7 +30,7 @@ import {
 } from "../prompts.js";
 
 import { ensureWorkspace, isNewWorkspace } from "../../workspace/manager.js";
-import { writeFileSync, readFileSync, existsSync, chmodSync } from "fs";
+import { writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { TELETON_ROOT } from "../../workspace/paths.js";
 import { TelegramUserClient } from "../../telegram/client.js";
@@ -169,6 +169,28 @@ const MODEL_OPTIONS: Record<string, Array<{ value: string; name: string; descrip
       description: "Free, 256K ctx, reasoning",
     },
   ],
+  mistral: [
+    {
+      value: "devstral-small-2507",
+      name: "Devstral Small",
+      description: "Coding, 128K ctx, $0.10/M",
+    },
+    {
+      value: "devstral-medium-latest",
+      name: "Devstral Medium",
+      description: "Coding, 262K ctx, $0.40/M",
+    },
+    {
+      value: "mistral-large-latest",
+      name: "Mistral Large",
+      description: "General, 128K ctx, $2/M",
+    },
+    {
+      value: "magistral-small",
+      name: "Magistral Small",
+      description: "Reasoning, 128K ctx, $0.50/M",
+    },
+  ],
 };
 
 /**
@@ -217,6 +239,7 @@ async function runInteractiveOnboarding(
   let groupPolicy: "open" | "allowlist" | "disabled" = "open";
   let requireMention = true;
   let maxAgenticIterations = "5";
+  let cocoonInstance = 10000;
   let buyMaxFloorPercent = 100;
   let sellMinFloorPercent = 105;
 
@@ -340,38 +363,65 @@ async function runInteractiveOnboarding(
     );
   }
 
-  // API key
-  const envApiKey = process.env.TELETON_API_KEY;
-  if (options.apiKey) {
-    apiKey = options.apiKey;
-  } else if (envApiKey) {
-    const validationError = validateApiKeyFormat(selectedProvider, envApiKey);
-    if (validationError) {
-      prompter.warn(`TELETON_API_KEY env var found but invalid: ${validationError}`);
+  // API key (or Cocoon setup)
+  if (selectedProvider === "cocoon") {
+    // Cocoon Network — no API key, managed externally via cocoon-cli
+    apiKey = "";
+
+    const cocoonPort = await input({
+      message: "Cocoon proxy HTTP port",
+      default: "10000",
+      theme,
+      validate: (value = "") => {
+        const n = parseInt(value.trim(), 10);
+        return n >= 1 && n <= 65535 ? true : "Must be a port number (1-65535)";
+      },
+    });
+    cocoonInstance = parseInt(cocoonPort.trim(), 10);
+
+    noteBox(
+      "Cocoon Network — Decentralized LLM on TON\n" +
+        "No API key needed. Requires cocoon-cli running externally.\n" +
+        `Teleton will connect to http://localhost:${cocoonInstance}/v1/`,
+      "Cocoon Network",
+      TON
+    );
+
+    STEPS[1].value = `${providerMeta.displayName}  ${DIM(`port ${cocoonInstance}`)}`;
+  } else {
+    // Standard providers — API key required
+    const envApiKey = process.env.TELETON_API_KEY;
+    if (options.apiKey) {
+      apiKey = options.apiKey;
+    } else if (envApiKey) {
+      const validationError = validateApiKeyFormat(selectedProvider, envApiKey);
+      if (validationError) {
+        prompter.warn(`TELETON_API_KEY env var found but invalid: ${validationError}`);
+        apiKey = await password({
+          message: `${providerMeta.displayName} API Key (${providerMeta.keyHint})`,
+          theme,
+          validate: (value = "") => validateApiKeyFormat(selectedProvider, value) ?? true,
+        });
+      } else {
+        prompter.log(`Using API key from TELETON_API_KEY env var`);
+        apiKey = envApiKey;
+      }
+    } else {
+      noteBox(
+        `${providerMeta.displayName} API key required.\nGet it at: ${providerMeta.consoleUrl}`,
+        "API Key",
+        TON
+      );
       apiKey = await password({
         message: `${providerMeta.displayName} API Key (${providerMeta.keyHint})`,
         theme,
         validate: (value = "") => validateApiKeyFormat(selectedProvider, value) ?? true,
       });
-    } else {
-      prompter.log(`Using API key from TELETON_API_KEY env var`);
-      apiKey = envApiKey;
     }
-  } else {
-    noteBox(
-      `${providerMeta.displayName} API key required.\nGet it at: ${providerMeta.consoleUrl}`,
-      "API Key",
-      TON
-    );
-    apiKey = await password({
-      message: `${providerMeta.displayName} API Key (${providerMeta.keyHint})`,
-      theme,
-      validate: (value = "") => validateApiKeyFormat(selectedProvider, value) ?? true,
-    });
-  }
 
-  const maskedKey = apiKey.length > 10 ? apiKey.slice(0, 6) + "..." + apiKey.slice(-4) : "***";
-  STEPS[1].value = `${providerMeta.displayName}  ${DIM(maskedKey)}`;
+    const maskedKey = apiKey.length > 10 ? apiKey.slice(0, 6) + "..." + apiKey.slice(-4) : "***";
+    STEPS[1].value = `${providerMeta.displayName}  ${DIM(maskedKey)}`;
+  }
 
   // ════════════════════════════════════════════════════════════════════
   // Step 2: Telegram — credentials
@@ -457,7 +507,7 @@ async function runInteractiveOnboarding(
 
   selectedModel = providerMeta.defaultModel;
 
-  if (selectedFlow === "advanced") {
+  if (selectedFlow === "advanced" && selectedProvider !== "cocoon") {
     const providerModels = MODEL_OPTIONS[selectedProvider] || [];
     const modelChoices = [
       ...providerModels,
@@ -861,8 +911,10 @@ async function runInteractiveOnboarding(
       ],
       skip_unlimited_providers: false,
     },
+    logging: { level: "info", pretty: true },
     mcp: { servers: {} },
     plugins: {},
+    ...(selectedProvider === "cocoon" ? { cocoon: { port: cocoonInstance } } : {}),
     tonapi_key: tonapiKey,
     tavily_api_key: tavilyApiKey,
   };
@@ -870,8 +922,7 @@ async function runInteractiveOnboarding(
   // Save config
   spinner.start(DIM("Saving configuration..."));
   const configYaml = YAML.stringify(config);
-  writeFileSync(workspace.configPath, configYaml, "utf-8");
-  chmodSync(workspace.configPath, 0o600);
+  writeFileSync(workspace.configPath, configYaml, { encoding: "utf-8", mode: 0o600 });
   spinner.succeed(DIM(`Configuration saved: ${workspace.configPath}`));
 
   // Telegram authentication
@@ -1023,14 +1074,14 @@ async function runNonInteractiveOnboarding(
       ],
       skip_unlimited_providers: false,
     },
+    logging: { level: "info", pretty: true },
     mcp: { servers: {} },
     plugins: {},
     tavily_api_key: options.tavilyApiKey,
   };
 
   const configYaml = YAML.stringify(config);
-  writeFileSync(workspace.configPath, configYaml, "utf-8");
-  chmodSync(workspace.configPath, 0o600);
+  writeFileSync(workspace.configPath, configYaml, { encoding: "utf-8", mode: 0o600 });
 
   prompter.success(`Configuration created: ${workspace.configPath}`);
 }

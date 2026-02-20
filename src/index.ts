@@ -1,3 +1,4 @@
+import { Api } from "telegram";
 import { loadConfig, getDefaultConfigPath } from "./config/index.js";
 import { loadSoul } from "./soul/index.js";
 import { AgentRuntime } from "./agent/runtime.js";
@@ -28,6 +29,10 @@ import {
   closeMcpServers,
   type McpConnection,
 } from "./agent/tools/mcp-loader.js";
+import { getErrorMessage } from "./utils/errors.js";
+import { createLogger, initLoggerFromConfig } from "./utils/logger.js";
+
+const log = createLogger("App");
 
 export class TeletonApp {
   private config;
@@ -52,6 +57,9 @@ export class TeletonApp {
   constructor(configPath?: string) {
     this.configPath = configPath ?? getDefaultConfigPath();
     this.config = loadConfig(this.configPath);
+
+    // Wire YAML logging config to pino (H2 fix)
+    initLoggerFromConfig(this.config.logging);
 
     if (this.config.tonapi_key) {
       setTonapiKey(this.config.tonapi_key);
@@ -125,7 +133,7 @@ export class TeletonApp {
     // ASCII banner (blue color)
     const blue = "\x1b[34m";
     const reset = "\x1b[0m";
-    console.log(`
+    log.info(`
 ${blue}  ┌───────────────────────────────────────────────────────────────────────────────────────┐
   │                                                                                       │
   │       ______________    ________________  _   __   ___   _____________   ________     │
@@ -158,9 +166,8 @@ ${blue}  ┌──────────────────────�
         }
         this.modules.push(mod);
       } catch (error) {
-        console.error(
-          `❌ Plugin "${mod.name}" failed to load:`,
-          error instanceof Error ? error.message : error
+        log.error(
+          `❌ Plugin "${mod.name}" failed to load: ${error instanceof Error ? error.message : error}`
         );
       }
     }
@@ -177,7 +184,7 @@ ${blue}  ┌──────────────────────�
         if (mcp.count > 0) {
           this.toolCount = this.toolRegistry.count;
           mcpServerNames.push(...mcp.names);
-          console.log(
+          log.info(
             `🔌 MCP: ${mcp.count} tools from ${mcp.names.length} server(s) (${mcp.names.join(", ")})`
           );
         }
@@ -213,11 +220,11 @@ ${blue}  ┌──────────────────────�
     const provider = (this.config.agent.provider || "anthropic") as SupportedProvider;
     const providerMeta = getProviderMetadata(provider);
     const allNames = [...moduleNames, ...pluginNames, ...mcpServerNames];
-    console.log(
+    log.info(
       `🔌 ${this.toolCount} tools loaded (${allNames.join(", ")})${pluginToolCount > 0 ? ` — ${pluginToolCount} from plugins` : ""}`
     );
     if (providerMeta.toolLimit !== null && this.toolCount > providerMeta.toolLimit) {
-      console.warn(
+      log.warn(
         `⚠️ Tool count (${this.toolCount}) exceeds ${providerMeta.displayName} limit (${providerMeta.toolLimit})`
       );
     }
@@ -247,17 +254,36 @@ ${blue}  ┌──────────────────────�
     if (toolIndex) {
       const t0 = Date.now();
       const indexedCount = await toolIndex.indexAll(this.toolRegistry.getAll());
-      console.log(`🔍 Tool RAG: ${indexedCount} tools indexed (${Date.now() - t0}ms)`);
+      log.info(`🔍 Tool RAG: ${indexedCount} tools indexed (${Date.now() - t0}ms)`);
     }
 
     // Initialize context builder for RAG search in agent
     this.agent.initializeContextBuilder(this.memory.embedder, db.isVectorSearchReady());
 
+    // Cocoon Network — register models from external cocoon-cli proxy
+    if (this.config.agent.provider === "cocoon") {
+      try {
+        const { registerCocoonModels } = await import("./agent/client.js");
+        const port = this.config.cocoon?.port ?? 10000;
+        const models = await registerCocoonModels(port);
+        if (models.length === 0) {
+          throw new Error(`No models found on port ${port}`);
+        }
+        log.info(`Cocoon Network ready — ${models.length} model(s) on port ${port}`);
+      } catch (err) {
+        log.error(
+          `Cocoon Network unavailable on port ${this.config.cocoon?.port ?? 10000}: ${getErrorMessage(err)}`
+        );
+        log.error("Start the Cocoon client first: cocoon start");
+        process.exit(1);
+      }
+    }
+
     // Connect to Telegram
     await this.bridge.connect();
 
     if (!this.bridge.isAvailable()) {
-      console.error("❌ Failed to connect to Telegram");
+      log.error("❌ Failed to connect to Telegram");
       process.exit(1);
     }
 
@@ -287,12 +313,12 @@ ${blue}  ┌──────────────────────�
         startedModules.push(mod);
       }
     } catch (error) {
-      console.error("❌ Module start failed, cleaning up started modules:", error);
+      log.error({ err: error }, "❌ Module start failed, cleaning up started modules");
       for (const mod of startedModules.reverse()) {
         try {
           await mod.stop?.();
         } catch (e) {
-          console.error(`⚠️ Module "${mod.name}" cleanup failed:`, e);
+          log.error({ err: e }, `⚠️ Module "${mod.name}" cleanup failed`);
         }
       }
       throw error;
@@ -315,24 +341,22 @@ ${blue}  ┌──────────────────────�
     }
 
     // Display startup summary
-    console.log(`✅ SOUL.md loaded`);
-    console.log(
-      `✅ Knowledge: ${indexResult.indexed} files, ${ftsResult.knowledge} chunks indexed`
-    );
-    console.log(`✅ Telegram: @${username} connected`);
-    console.log(`✅ TON Blockchain: connected`);
+    log.info(`✅ SOUL.md loaded`);
+    log.info(`✅ Knowledge: ${indexResult.indexed} files, ${ftsResult.knowledge} chunks indexed`);
+    log.info(`✅ Telegram: @${username} connected`);
+    log.info(`✅ TON Blockchain: connected`);
     if (this.config.tonapi_key) {
-      console.log(`🔑 TonAPI key configured`);
+      log.info(`🔑 TonAPI key configured`);
     }
-    console.log(`✅ DEXs: STON.fi, DeDust connected`);
-    console.log(`✅ Wallet: ${walletAddress || "not configured"}`);
-    console.log(`✅ Model: ${provider}/${this.config.agent.model}`);
-    console.log(`✅ Admins: ${this.config.telegram.admin_ids.join(", ")}`);
-    console.log(
+    log.info(`✅ DEXs: STON.fi, DeDust connected`);
+    log.info(`✅ Wallet: ${walletAddress || "not configured"}`);
+    log.info(`✅ Model: ${provider}/${this.config.agent.model}`);
+    log.info(`✅ Admins: ${this.config.telegram.admin_ids.join(", ")}`);
+    log.info(
       `✅ Policy: DM ${this.config.telegram.dm_policy}, Groups ${this.config.telegram.group_policy}, Debounce ${this.config.telegram.debounce_ms}ms\n`
     );
 
-    console.log("Teleton Agent is running! Press Ctrl+C to stop.\n");
+    log.info("Teleton Agent is running! Press Ctrl+C to stop.");
 
     // Start WebUI server if enabled
     if (this.config.webui.enabled) {
@@ -380,8 +404,8 @@ ${blue}  ┌──────────────────────�
         });
         await this.webuiServer.start();
       } catch (error) {
-        console.error("❌ Failed to start WebUI server:", error);
-        console.warn("⚠️ Continuing without WebUI...");
+        log.error({ err: error }, "❌ Failed to start WebUI server");
+        log.warn("⚠️ Continuing without WebUI...");
       }
     }
 
@@ -411,7 +435,7 @@ ${blue}  ┌──────────────────────�
         }
       },
       (error, messages) => {
-        console.error(`Error processing batch of ${messages.length} messages:`, error);
+        log.error({ err: error }, `Error processing batch of ${messages.length} messages`);
       }
     );
 
@@ -420,7 +444,7 @@ ${blue}  ┌──────────────────────�
       try {
         await this.debouncer!.enqueue(message);
       } catch (error) {
-        console.error("Error enqueueing message:", error);
+        log.error({ err: error }, "Error enqueueing message");
       }
     });
 
@@ -451,10 +475,11 @@ ${blue}  ┌──────────────────────�
         return;
       }
 
-      const firstName = entity.firstName || "";
-      const lastName = (entity as any).lastName || "";
+      const user = entity as Api.User;
+      const firstName = user.firstName || "";
+      const lastName = user.lastName || "";
       const fullName = lastName ? `${firstName} ${lastName}` : firstName;
-      const username = (entity as any).username || "";
+      const username = user.username || "";
 
       let updated = false;
 
@@ -483,12 +508,11 @@ ${blue}  ┌──────────────────────�
         const displayUsername = this.config.telegram.owner_username
           ? ` (@${this.config.telegram.owner_username})`
           : "";
-        console.log(`👤 Owner resolved: ${displayName}${displayUsername}`);
+        log.info(`👤 Owner resolved: ${displayName}${displayUsername}`);
       }
     } catch (error) {
-      console.warn(
-        "⚠️ Could not resolve owner info:",
-        error instanceof Error ? error.message : error
+      log.warn(
+        `⚠️ Could not resolve owner info: ${error instanceof Error ? error.message : error}`
       );
     }
   }
@@ -572,7 +596,7 @@ ${blue}  ┌──────────────────────�
       // Handle as regular message
       await this.messageHandler.handleMessage(message);
     } catch (error) {
-      console.error("Error handling message:", error);
+      log.error({ err: error }, "Error handling message");
     }
   }
 
@@ -592,7 +616,7 @@ ${blue}  ┌──────────────────────�
     // Extract task ID from format: [TASK:uuid] description
     const match = message.text.match(/^\[TASK:([^\]]+)\]/);
     if (!match) {
-      console.warn("Invalid task format:", message.text);
+      log.warn(`Invalid task format: ${message.text}`);
       return;
     }
 
@@ -602,7 +626,7 @@ ${blue}  ┌──────────────────────�
       const task = taskStore.getTask(taskId);
 
       if (!task) {
-        console.warn(`Task ${taskId} not found in database`);
+        log.warn(`Task ${taskId} not found in database`);
         await this.bridge.sendMessage({
           chatId: message.chatId,
           text: `⚠️ Task ${taskId} not found. It may have been deleted.`,
@@ -613,13 +637,13 @@ ${blue}  ┌──────────────────────�
 
       // Skip cancelled tasks (e.g. cancelled via WebUI or admin)
       if (task.status === "cancelled" || task.status === "done" || task.status === "failed") {
-        console.log(`⏭️ Task ${taskId} already ${task.status}, skipping`);
+        log.info(`⏭️ Task ${taskId} already ${task.status}, skipping`);
         return;
       }
 
       // Check if all dependencies are satisfied
       if (!taskStore.canExecute(taskId)) {
-        console.warn(`Task ${taskId} cannot execute yet - dependencies not satisfied`);
+        log.warn(`Task ${taskId} cannot execute yet - dependencies not satisfied`);
         await this.bridge.sendMessage({
           chatId: message.chatId,
           text: `⏳ Task "${task.description}" is waiting for parent tasks to complete.`,
@@ -683,7 +707,7 @@ ${blue}  ┌──────────────────────�
       // Mark task as done if agent responded successfully
       taskStore.completeTask(taskId, response.content);
 
-      console.log(`✅ Executed scheduled task ${taskId}: ${task.description}`);
+      log.info(`✅ Executed scheduled task ${taskId}: ${task.description}`);
 
       // Initialize dependency resolver if needed
       if (!this.dependencyResolver) {
@@ -693,11 +717,11 @@ ${blue}  ┌──────────────────────�
       // Trigger any dependent tasks
       await this.dependencyResolver.onTaskComplete(taskId);
     } catch (error) {
-      console.error("Error handling scheduled task:", error);
+      log.error({ err: error }, "Error handling scheduled task");
 
       // Try to mark task as failed and cascade to dependents
       try {
-        taskStore.failTask(taskId, error instanceof Error ? error.message : String(error));
+        taskStore.failTask(taskId, getErrorMessage(error));
 
         // Initialize resolver if needed
         if (!this.dependencyResolver) {
@@ -727,9 +751,8 @@ ${blue}  ┌──────────────────────�
             try {
               await withHooks.onMessage(event);
             } catch (err) {
-              console.error(
-                `❌ [${mod.name}] onMessage error:`,
-                err instanceof Error ? err.message : err
+              log.error(
+                `❌ [${mod.name}] onMessage error: ${err instanceof Error ? err.message : err}`
               );
             }
           }
@@ -739,7 +762,7 @@ ${blue}  ┌──────────────────────�
 
     const hookCount = this.modules.filter((m) => (m as PluginModuleWithHooks).onMessage).length;
     if (hookCount > 0) {
-      console.log(`🔗 ${hookCount} plugin onMessage hook(s) registered`);
+      log.info(`🔗 ${hookCount} plugin onMessage hook(s) registered`);
     }
 
     // Callback query handler: register ONCE, dispatch dynamically
@@ -763,9 +786,8 @@ ${blue}  ┌──────────────────────�
           try {
             await this.bridge.getClient().answerCallbackQuery(queryId, { message: text, alert });
           } catch (err) {
-            console.error(
-              "❌ Failed to answer callback query:",
-              err instanceof Error ? err.message : err
+            log.error(
+              `❌ Failed to answer callback query: ${err instanceof Error ? err.message : err}`
             );
           }
         };
@@ -786,9 +808,8 @@ ${blue}  ┌──────────────────────�
             try {
               await withHooks.onCallbackQuery(event);
             } catch (err) {
-              console.error(
-                `❌ [${mod.name}] onCallbackQuery error:`,
-                err instanceof Error ? err.message : err
+              log.error(
+                `❌ [${mod.name}] onCallbackQuery error: ${err instanceof Error ? err.message : err}`
               );
             }
           }
@@ -800,7 +821,7 @@ ${blue}  ┌──────────────────────�
         (m) => (m as PluginModuleWithHooks).onCallbackQuery
       ).length;
       if (cbCount > 0) {
-        console.log(`🔗 ${cbCount} plugin onCallbackQuery hook(s) registered`);
+        log.info(`🔗 ${cbCount} plugin onCallbackQuery hook(s) registered`);
       }
     }
   }
@@ -809,14 +830,14 @@ ${blue}  ┌──────────────────────�
    * Stop the agent
    */
   async stop(): Promise<void> {
-    console.log("\n👋 Stopping Teleton AI...");
+    log.info("👋 Stopping Teleton AI...");
 
     // Stop WebUI server first (if running)
     if (this.webuiServer) {
       try {
         await this.webuiServer.stop();
       } catch (e) {
-        console.error("⚠️ WebUI stop failed:", e);
+        log.error({ err: e }, "⚠️ WebUI stop failed");
       }
     }
 
@@ -825,7 +846,7 @@ ${blue}  ┌──────────────────────�
       try {
         await this.pluginWatcher.stop();
       } catch (e) {
-        console.error("⚠️ Plugin watcher stop failed:", e);
+        log.error({ err: e }, "⚠️ Plugin watcher stop failed");
       }
     }
 
@@ -834,7 +855,7 @@ ${blue}  ┌──────────────────────�
       try {
         await closeMcpServers(this.mcpConnections);
       } catch (e) {
-        console.error("⚠️ MCP close failed:", e);
+        log.error({ err: e }, "⚠️ MCP close failed");
       }
     }
 
@@ -843,7 +864,7 @@ ${blue}  ┌──────────────────────�
       try {
         await this.debouncer.flushAll();
       } catch (e) {
-        console.error("⚠️ Debouncer flush failed:", e);
+        log.error({ err: e }, "⚠️ Debouncer flush failed");
       }
     }
 
@@ -851,27 +872,27 @@ ${blue}  ┌──────────────────────�
     try {
       await this.messageHandler.drain();
     } catch (e) {
-      console.error("⚠️ Message queue drain failed:", e);
+      log.error({ err: e }, "⚠️ Message queue drain failed");
     }
 
     for (const mod of this.modules) {
       try {
         await mod.stop?.();
       } catch (e) {
-        console.error(`⚠️ Module "${mod.name}" stop failed:`, e);
+        log.error({ err: e }, `⚠️ Module "${mod.name}" stop failed`);
       }
     }
 
     try {
       await this.bridge.disconnect();
     } catch (e) {
-      console.error("⚠️ Bridge disconnect failed:", e);
+      log.error({ err: e }, "⚠️ Bridge disconnect failed");
     }
 
     try {
       closeDatabase();
     } catch (e) {
-      console.error("⚠️ Database close failed:", e);
+      log.error({ err: e }, "⚠️ Database close failed");
     }
   }
 }
@@ -884,17 +905,17 @@ export async function main(configPath?: string): Promise<void> {
   try {
     app = new TeletonApp(configPath);
   } catch (error) {
-    console.error("Failed to initialize:", error instanceof Error ? error.message : error);
+    log.error(`Failed to initialize: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
   }
 
   // Handle uncaught errors - log and keep running
   process.on("unhandledRejection", (reason) => {
-    console.error("⚠️ Unhandled promise rejection:", reason);
+    log.error({ err: reason }, "⚠️ Unhandled promise rejection");
   });
 
   process.on("uncaughtException", (error) => {
-    console.error("💥 Uncaught exception:", error);
+    log.error({ err: error }, "💥 Uncaught exception");
     // Exit on uncaught exceptions - state may be corrupted
     process.exit(1);
   });
@@ -906,7 +927,7 @@ export async function main(configPath?: string): Promise<void> {
     shutdownInProgress = true;
 
     const forceExit = setTimeout(() => {
-      console.error("⚠️ Shutdown timed out, forcing exit");
+      log.error("⚠️ Shutdown timed out, forcing exit");
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
     forceExit.unref();
@@ -924,7 +945,7 @@ export async function main(configPath?: string): Promise<void> {
 // Run if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    log.fatal({ err: error }, "Fatal error");
     process.exit(1);
   });
 }
