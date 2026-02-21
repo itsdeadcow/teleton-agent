@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-02-21
+
 ### Added
 - **WebUI Setup Wizard**: 6-step guided onboarding flow (Welcome, Provider, Telegram, Config, Wallet, Connect) with shared Shell sidebar layout, React context state management, server-side validation mirror, and "Start Agent" button with seamless setup-to-dashboard transition
 - **Local LLM Provider**: New "local" provider for OpenAI-compatible servers (Ollama, vLLM, LM Studio, llama.cpp) with auto-model discovery from `/models` endpoint, CLI `--base-url` option, and WebUI provider card
 - `getEffectiveApiKey()` helper for consistent API key resolution across all LLM call sites
+- ASCII banner for `teleton setup --ui` matching `teleton start`
 - 86 setup route tests + 39 validation tests (898 total tests)
 
 ### Fixed
@@ -265,7 +268,8 @@ Git history rewritten to fix commit attribution (email update from `tonresistor@
 - Professional distribution (npm, Docker, CI/CD)
 - Pre-commit hooks and linting infrastructure
 
-[Unreleased]: https://github.com/TONresistor/teleton-agent/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/TONresistor/teleton-agent/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/TONresistor/teleton-agent/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/TONresistor/teleton-agent/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/TONresistor/teleton-agent/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/TONresistor/teleton-agent/compare/v0.5.0...v0.5.1
