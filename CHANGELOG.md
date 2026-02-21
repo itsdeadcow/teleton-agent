@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **WebUI Setup Wizard**: 6-step guided onboarding flow (Welcome, Provider, Telegram, Config, Wallet, Connect) with shared Shell sidebar layout, React context state management, server-side validation mirror, and "Start Agent" button with seamless setup-to-dashboard transition
+- **Local LLM Provider**: New "local" provider for OpenAI-compatible servers (Ollama, vLLM, LM Studio, llama.cpp) with auto-model discovery from `/models` endpoint, CLI `--base-url` option, and WebUI provider card
+- `getEffectiveApiKey()` helper for consistent API key resolution across all LLM call sites
+- 86 setup route tests + 39 validation tests (898 total tests)
+
+### Fixed
+- **Security audit remediation (27 fixes)**: MCP env var blocklist, sendStory symlink-safe path validation (realpathSync), DB ATTACH/DETACH proxy for plugin isolation, BigInt float precision (string-based decimals), debounce clamp, SendMode.IGNORE_ERRORS removed, URL quote escaping, wallet JSON validation, pino redact, and more
+- `fetchWithTimeout` (10s) + http/https scheme validation on local model discovery
+- Model array capped to 500 entries to prevent unbounded growth
+- Early exit when provider=local but `base_url` missing
+- Non-interactive onboarding: relaxed `--api-key` for local/cocoon providers
+- WebUI UX: CSS specificity fixes, bot token inline field, wallet address prominent display, TonAPI/Tavily as plain optional fields
+
+## Note — 2026-02-21
+
+Git history rewritten to fix commit attribution (email update from `tonresistor@github.com` to the account owner's actual email). All commit hashes changed; code, dates, and messages are identical. Tags re-pointed to new hashes. Force-pushed to origin. No code or functionality was affected.
+
+## [0.6.0] - 2026-02-20
+
+### Added
+- **Cocoon Network** proxy-only LLM provider with XML tool injection
+- **Moonshot** (Kimi K2.5 / K2 Thinking) LLM provider
+- **Mistral** LLM provider
+- **Pino structured logging** — migrated from console.* across entire codebase
+- **MCP client support** with CLI management commands (`teleton mcp add/remove/list`)
+- **Plugin Marketplace** with secrets management and download functionality
+- **WebUI**: Config + MCP pages, custom Select component, centralized CSS
+- **WebUI**: accordion UI, dashboard settings
+- **Tool RAG**, web tools, and admin enhancements
+
+### Changed
+- Type safety overhaul: reduced `as any` from 135 to 32 instances
+- Setup wizard migrated to `@inquirer/prompts` with auto-resolve owner
+- All dependencies upgraded to latest versions
+
+### Fixed
+- Data integrity and cleanup from full audit
+
 ## [0.5.2] - 2026-02-16
 
 ### Added
@@ -224,6 +265,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Professional distribution (npm, Docker, CI/CD)
 - Pre-commit hooks and linting infrastructure
 
+[Unreleased]: https://github.com/TONresistor/teleton-agent/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/TONresistor/teleton-agent/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/TONresistor/teleton-agent/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/TONresistor/teleton-agent/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/TONresistor/teleton-agent/compare/v0.4.0...v0.5.0
@@ -246,5 +289,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.1.9]: https://github.com/TONresistor/teleton-agent/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/TONresistor/teleton-agent/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/TONresistor/teleton-agent/compare/v0.1.6...v0.1.7
-[0.1.6]: https://github.com/TONresistor/teleton-agent/compare/v0.1.4...v0.1.6
-[0.1.4 and earlier]: https://github.com/TONresistor/teleton-agent/releases/tag/v0.1.4
+[0.1.6]: https://github.com/TONresistor/teleton-agent/releases/tag/v0.1.6
+[0.1.4 and earlier]: https://github.com/TONresistor/teleton-agent/releases/tag/v0.1.6
