@@ -204,6 +204,27 @@ export async function onboardCommand(options: OnboardOptions = {}): Promise<void
   if (options.ui) {
     const { SetupServer } = await import("../../webui/setup-server.js");
     const port = parseInt(options.uiPort || "7777") || 7777;
+    const url = `http://localhost:${port}/setup`;
+
+    const blue = "\x1b[34m";
+    const reset = "\x1b[0m";
+    const dim = "\x1b[2m";
+    console.log(`
+${blue}  ┌───────────────────────────────────────────────────────────────────────────────────────┐
+  │                                                                                       │
+  │       ______________    ________________  _   __   ___   _____________   ________     │
+  │      /_  __/ ____/ /   / ____/_  __/ __ \\/ | / /  /   | / ____/ ____/ | / /_  __/     │
+  │       / / / __/ / /   / __/   / / / / / /  |/ /  / /| |/ / __/ __/ /  |/ / / /        │
+  │      / / / /___/ /___/ /___  / / / /_/ / /|  /  / ___ / /_/ / /___/ /|  / / /         │
+  │     /_/ /_____/_____/_____/ /_/  \\____/_/ |_/  /_/  |_\\____/_____/_/ |_/ /_/          │
+  │                                                                                       │
+  └────────────────────────────────────────────────────────────────── DEV: ZKPROOF.T.ME ──┘${reset}
+
+  ${dim}Setup wizard running at${reset} ${url}
+  ${dim}Opening in your default browser...${reset}
+  ${dim}Press Ctrl+C to cancel.${reset}
+`);
+
     const server = new SetupServer(port);
     await server.start();
 
