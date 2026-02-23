@@ -164,25 +164,30 @@ ${blue}  ┌──────────────────────�
     if (this.config.webui.enabled) {
       try {
         const { WebUIServer } = await import("./webui/server.js");
-        // Build MCP server info for WebUI
-        const mcpServers = Object.entries(this.config.mcp.servers).map(([name, serverConfig]) => {
-          const type = serverConfig.command ? ("stdio" as const) : ("sse" as const);
-          const target = serverConfig.command ?? serverConfig.url ?? "";
-          const connected = this.mcpConnections.some((c) => c.serverName === name);
-          const moduleName = `mcp_${name}`;
-          const moduleTools = this.toolRegistry.getModuleTools(moduleName);
-          return {
-            name,
-            type,
-            target,
-            scope: serverConfig.scope ?? "always",
-            enabled: serverConfig.enabled ?? true,
-            connected,
-            toolCount: moduleTools.length,
-            tools: moduleTools.map((t) => t.name),
-            envKeys: Object.keys(serverConfig.env ?? {}),
-          };
-        });
+        // Build MCP server info getter for WebUI (live status, not a snapshot)
+        const mcpServers = () =>
+          Object.entries(this.config.mcp.servers).map(([name, serverConfig]) => {
+            const type = serverConfig.command
+              ? ("stdio" as const)
+              : serverConfig.url
+                ? ("streamable-http" as const)
+                : ("sse" as const);
+            const target = serverConfig.command ?? serverConfig.url ?? "";
+            const connected = this.mcpConnections.some((c) => c.serverName === name);
+            const moduleName = `mcp_${name}`;
+            const moduleTools = this.toolRegistry.getModuleTools(moduleName);
+            return {
+              name,
+              type,
+              target,
+              scope: serverConfig.scope ?? "always",
+              enabled: serverConfig.enabled ?? true,
+              connected,
+              toolCount: moduleTools.length,
+              tools: moduleTools.map((t) => t.name),
+              envKeys: Object.keys(serverConfig.env ?? {}),
+            };
+          });
 
         const builtinNames = this.modules.map((m) => m.name);
         const pluginContext: PluginContext = {
