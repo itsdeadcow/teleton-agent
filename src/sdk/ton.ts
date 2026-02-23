@@ -246,7 +246,7 @@ export function createTonSDK(log: PluginLogger, db: Database.Database | null): T
           const { balance, wallet_address, jetton } = item;
           if (jetton.verification === "blacklist") continue;
 
-          const decimals = jetton.decimals || 9;
+          const decimals = jetton.decimals ?? 9;
           const rawBalance = BigInt(balance);
           const divisor = BigInt(10 ** decimals);
           const wholePart = rawBalance / divisor;
@@ -332,95 +332,103 @@ export function createTonSDK(log: PluginLogger, db: Database.Database | null): T
         throw new PluginSDKError("Invalid recipient address", "INVALID_ADDRESS");
       }
 
-      // Get sender's jetton wallet from balances
-      const jettonsResponse = await tonapiFetch(`/accounts/${walletData.address}/jettons`);
-      if (!jettonsResponse.ok) {
+      try {
+        // Get sender's jetton wallet from balances
+        const jettonsResponse = await tonapiFetch(`/accounts/${walletData.address}/jettons`);
+        if (!jettonsResponse.ok) {
+          throw new PluginSDKError(
+            `Failed to fetch jetton balances: ${jettonsResponse.status}`,
+            "OPERATION_FAILED"
+          );
+        }
+
+        const jettonsData = await jettonsResponse.json();
+        const jettonBalance = jettonsData.balances?.find(
+          (b: any) =>
+            b.jetton.address.toLowerCase() === jettonAddress.toLowerCase() ||
+            Address.parse(b.jetton.address).toString() === Address.parse(jettonAddress).toString()
+        );
+
+        if (!jettonBalance) {
+          throw new PluginSDKError(
+            `You don't own any of this jetton: ${jettonAddress}`,
+            "OPERATION_FAILED"
+          );
+        }
+
+        const senderJettonWallet = jettonBalance.wallet_address.address;
+        const decimals = jettonBalance.jetton.decimals ?? 9;
+        const currentBalance = BigInt(jettonBalance.balance);
+        const amountStr = amount.toFixed(decimals);
+        const [whole, frac = ""] = amountStr.split(".");
+        const amountInUnits = BigInt(whole + (frac + "0".repeat(decimals)).slice(0, decimals));
+
+        if (amountInUnits > currentBalance) {
+          throw new PluginSDKError(
+            `Insufficient balance. Have ${Number(currentBalance) / 10 ** decimals}, need ${amount}`,
+            "OPERATION_FAILED"
+          );
+        }
+
+        const comment = opts?.comment;
+
+        // Build forward payload (comment)
+        let forwardPayload = beginCell().endCell();
+        if (comment) {
+          forwardPayload = beginCell().storeUint(0, 32).storeStringTail(comment).endCell();
+        }
+
+        // TEP-74 transfer message body
+        const JETTON_TRANSFER_OP = 0xf8a7ea5;
+        const messageBody = beginCell()
+          .storeUint(JETTON_TRANSFER_OP, 32)
+          .storeUint(0, 64) // query_id
+          .storeCoins(amountInUnits)
+          .storeAddress(Address.parse(to))
+          .storeAddress(Address.parse(walletData.address)) // response_destination
+          .storeBit(false) // no custom_payload
+          .storeCoins(comment ? toNano("0.01") : BigInt(1)) // forward_ton_amount
+          .storeBit(comment ? true : false)
+          .storeMaybeRef(comment ? forwardPayload : null)
+          .endCell();
+
+        const keyPair = await getKeyPair();
+        if (!keyPair) {
+          throw new PluginSDKError("Wallet key derivation failed", "OPERATION_FAILED");
+        }
+
+        const wallet = WalletContractV5R1.create({
+          workchain: 0,
+          publicKey: keyPair.publicKey,
+        });
+
+        const endpoint = await getCachedHttpEndpoint();
+        const client = new TonClient({ endpoint });
+        const walletContract = client.open(wallet);
+        const seqno = await walletContract.getSeqno();
+
+        await walletContract.sendTransfer({
+          seqno,
+          secretKey: keyPair.secretKey,
+          sendMode: SendMode.PAY_GAS_SEPARATELY,
+          messages: [
+            internal({
+              to: Address.parse(senderJettonWallet),
+              value: toNano("0.05"),
+              body: messageBody,
+              bounce: true,
+            }),
+          ],
+        });
+
+        return { success: true, seqno };
+      } catch (err) {
+        if (err instanceof PluginSDKError) throw err;
         throw new PluginSDKError(
-          `Failed to fetch jetton balances: ${jettonsResponse.status}`,
+          `Failed to send jetton: ${err instanceof Error ? err.message : String(err)}`,
           "OPERATION_FAILED"
         );
       }
-
-      const jettonsData = await jettonsResponse.json();
-      const jettonBalance = jettonsData.balances?.find(
-        (b: any) =>
-          b.jetton.address.toLowerCase() === jettonAddress.toLowerCase() ||
-          Address.parse(b.jetton.address).toString() === Address.parse(jettonAddress).toString()
-      );
-
-      if (!jettonBalance) {
-        throw new PluginSDKError(
-          `You don't own any of this jetton: ${jettonAddress}`,
-          "OPERATION_FAILED"
-        );
-      }
-
-      const senderJettonWallet = jettonBalance.wallet_address.address;
-      const decimals = jettonBalance.jetton.decimals || 9;
-      const currentBalance = BigInt(jettonBalance.balance);
-      const amountStr = amount.toFixed(decimals);
-      const [whole, frac = ""] = amountStr.split(".");
-      const amountInUnits = BigInt(whole + (frac + "0".repeat(decimals)).slice(0, decimals));
-
-      if (amountInUnits > currentBalance) {
-        throw new PluginSDKError(
-          `Insufficient balance. Have ${Number(currentBalance) / 10 ** decimals}, need ${amount}`,
-          "OPERATION_FAILED"
-        );
-      }
-
-      const comment = opts?.comment;
-
-      // Build forward payload (comment)
-      let forwardPayload = beginCell().endCell();
-      if (comment) {
-        forwardPayload = beginCell().storeUint(0, 32).storeStringTail(comment).endCell();
-      }
-
-      // TEP-74 transfer message body
-      const JETTON_TRANSFER_OP = 0xf8a7ea5;
-      const messageBody = beginCell()
-        .storeUint(JETTON_TRANSFER_OP, 32)
-        .storeUint(0, 64) // query_id
-        .storeCoins(amountInUnits)
-        .storeAddress(Address.parse(to))
-        .storeAddress(Address.parse(walletData.address)) // response_destination
-        .storeBit(false) // no custom_payload
-        .storeCoins(comment ? toNano("0.01") : BigInt(1)) // forward_ton_amount
-        .storeBit(comment ? true : false)
-        .storeMaybeRef(comment ? forwardPayload : null)
-        .endCell();
-
-      const keyPair = await getKeyPair();
-      if (!keyPair) {
-        throw new PluginSDKError("Wallet key derivation failed", "OPERATION_FAILED");
-      }
-
-      const wallet = WalletContractV5R1.create({
-        workchain: 0,
-        publicKey: keyPair.publicKey,
-      });
-
-      const endpoint = await getCachedHttpEndpoint();
-      const client = new TonClient({ endpoint });
-      const walletContract = client.open(wallet);
-      const seqno = await walletContract.getSeqno();
-
-      await walletContract.sendTransfer({
-        seqno,
-        secretKey: keyPair.secretKey,
-        sendMode: SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS,
-        messages: [
-          internal({
-            to: Address.parse(senderJettonWallet),
-            value: toNano("0.05"),
-            body: messageBody,
-            bounce: true,
-          }),
-        ],
-      });
-
-      return { success: true, seqno };
     },
 
     async getJettonWalletAddress(
