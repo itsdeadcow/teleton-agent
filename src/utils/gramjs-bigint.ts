@@ -1,9 +1,9 @@
 import { randomBytes } from "crypto";
-import bigInt from "big-integer";
+import bigInt, { type BigInteger } from "big-integer";
 import { readBigIntFromBuffer } from "telegram/Helpers.js";
 
 /** Convert native bigint or number to BigInteger for GramJS TL long fields */
-export function toLong(value: bigint | number) {
+export function toLong(value: bigint | number): BigInteger {
   return bigInt(String(value));
 }
 
